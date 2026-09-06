@@ -12,7 +12,7 @@ async function fetchText(url: string) {
 
 function namesFromDirectory(text: string, ownBrand: string) {
   const names: string[] = [];
-  const patterns = [/competitors and similar companies include\s+([^\.]{20,260})/i, /top\s+\d*\s*competitors (?:are|include)\s+([^\.]{20,260})/i];
+  const patterns = [/competitors and similar companies include\s+([^.]{20,260})/i, /top\s+\d*\s*competitors (?:are|include)\s+([^.]{20,260})/i];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match?.[1]) continue;
