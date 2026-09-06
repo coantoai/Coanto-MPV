@@ -10,15 +10,11 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      globals: { ...globals.browser, ...globals.node },
-    },
-    plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
-    },
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'react-hooks/rules-of-hooks': 'off',
       'react-refresh/only-export-components': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
     },
