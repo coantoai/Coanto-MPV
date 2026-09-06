@@ -21,6 +21,8 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - run: bun run build
+        if: matrix.check == 'typecheck'
       - run: |
           case "${{ matrix.check }}" in
             typecheck) bunx tsc --noEmit ;;
