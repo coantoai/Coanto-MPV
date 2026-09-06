@@ -5,9 +5,9 @@ type Result = { provider: Provider; model: string; caseId: string; competitors: 
 
 const providerKeys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 const models: Record<Provider, string> = {
-  openai: process.env.OPENAI_MODEL || 'gpt-5.2',
-  gemini: process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
-  anthropic: process.env.ANTHROPIC_MODEL || 'claude-opus-5',
+  openai: process.env.OPENAI_MODEL || 'gpt-6-astra',
+  gemini: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5-1',
 };
 
 function host(value: string) { try { return new URL(/^https?:/i.test(value) ? value : `https://${value}`).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } }
@@ -96,5 +96,7 @@ const summary = providers.map((provider) => {
   };
 });
 
+const report = { generatedAt: new Date().toISOString(), summary, results };
+await Bun.write('ai-benchmark-report.json', JSON.stringify(report, null, 2));
 console.log('\n=== COANTO AI BENCHMARK ===');
-console.log(JSON.stringify({ generatedAt: new Date().toISOString(), summary, results }, null, 2));
+console.log(JSON.stringify(report, null, 2));
