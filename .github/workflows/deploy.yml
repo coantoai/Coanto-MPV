@@ -21,8 +21,6 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bun run build
-        if: matrix.check == 'typecheck'
       - run: |
           case "${{ matrix.check }}" in
             typecheck) bun run typecheck ;;
@@ -43,4 +41,32 @@ jobs:
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
-          LOVABLE_API_KEY: ${{ secrets.LOVABLE_API_KEY }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+
+  ai-benchmark:
+    if: ${{ secrets.OPENAI_API_KEY != '' || secrets.GEMINI_API_KEY != '' || secrets.ANTHROPIC_API_KEY != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/ai-benchmark.ts > ai-benchmark-report.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coanto-ai-benchmark
+          path: ai-benchmark-report.json
