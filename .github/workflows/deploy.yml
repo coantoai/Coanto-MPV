@@ -50,7 +50,6 @@ jobs:
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
 
   ai-benchmark:
-    if: ${{ secrets.OPENAI_API_KEY != '' || secrets.GEMINI_API_KEY != '' || secrets.ANTHROPIC_API_KEY != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +57,7 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bun scripts/ai-benchmark.ts > ai-benchmark-report.json
+      - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
@@ -69,4 +68,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: coanto-ai-benchmark
-          path: ai-benchmark-report.json
+          path: |
+            ai-benchmark-report.json
+            ai-benchmark.log
