@@ -6,6 +6,24 @@ export type SiteSnapshot = { url: string; title: string; description: string; h1
 export function normalizeUrl(v: string) { const x = v.trim(); return /^https?:\/\//i.test(x) ? x : `https://${x}`; }
 export function hostname(u: string) { try { return new URL(normalizeUrl(u)).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } }
 
+function isPrivateIpv4(host: string) {
+  const parts = host.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10 || parts[0] === 127 || (parts[0] === 169 && parts[1] === 254) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168) || parts.every((part) => part === 0);
+}
+
+export function validateTargetUrl(raw: string) {
+  try {
+    const parsed = new URL(normalizeUrl(raw));
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    if (!['http:', 'https:'].includes(parsed.protocol)) return { ok: false, reason: 'فقط روابط HTTP وHTTPS مسموحة.' };
+    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || host === '0.0.0.0' || host === '::1' || isPrivateIpv4(host)) return { ok: false, reason: 'عنوان الموقع يجب أن يكون عامًا على الإنترنت.' };
+    return { ok: true, url: parsed.toString() };
+  } catch {
+    return { ok: false, reason: 'رابط الموقع غير صالح.' };
+  }
+}
+
 function decodeHtml(h: string) { return h.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ').replace(/<svg[\s\S]*?<\/svg>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/&#x27;/gi, "'").replace(/\s+/g, ' ').trim(); }
 function decodeAttr(v: string) { return decodeHtml(v).replace(/\\+/g, ' ').trim(); }
 function attr(tag: string, name: string) { return tag.match(new RegExp(`\\b${name}=["']([^"']*)["']`, 'i'))?.[1] ?? ''; }
@@ -18,15 +36,26 @@ function extract(html: string, url: string): SiteSnapshot {
   return { url, title, description, h1, h2, text: decodeHtml(html).slice(0, 16000), sourceType: 'direct-site', evidence: [`Direct site observation: ${url}`] };
 }
 
-async function fetchWithTimeout(url: string, ms: number, headers: Record<string, string>) { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), ms); try { return await fetch(url, { signal: controller.signal, headers }); } finally { clearTimeout(timeout); } }
+async function fetchWithTimeout(url: string, ms: number, headers: Record<string, string>, redirect: RequestRedirect = 'follow') { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), ms); try { return await fetch(url, { signal: controller.signal, headers, redirect }); } finally { clearTimeout(timeout); } }
 
 export async function fetchSite(url: string) {
-  const normalized = normalizeUrl(url);
-  const response = await fetchWithTimeout(normalized, 12000, { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0; +https://coanto.com)', Accept: 'text/html,application/xhtml+xml' });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const contentType = response.headers.get('content-type') ?? '';
-  if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) throw new Error(`نوع محتوى غير مدعوم: ${contentType || 'unknown'}`);
-  return extract(await response.text(), normalized);
+  let current = normalizeUrl(url);
+  for (let redirects = 0; redirects <= 3; redirects += 1) {
+    const validation = validateTargetUrl(current);
+    if (!validation.ok) throw new Error(validation.reason);
+    const response = await fetchWithTimeout(validation.url!, 12000, { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0; +https://coanto.com)', Accept: 'text/html,application/xhtml+xml' }, 'manual');
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location || redirects === 3) throw new Error('الموقع أعاد توجيهًا غير صالح أو متكررًا.');
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) throw new Error(`نوع محتوى غير مدعوم: ${contentType || 'unknown'}`);
+    return extract(await response.text(), validation.url!);
+  }
+  throw new Error('تعذّر الوصول إلى الموقع.');
 }
 
 function searchUrl(q: string) { return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`; }
@@ -40,10 +69,7 @@ function parseDuckHtml(html: string): SearchHit[] {
     if (!anchor) continue;
     let target = attr(anchor[1], 'href');
     if (!target) continue;
-    try {
-      const parsed = new URL(target.startsWith('//') ? `https:${target}` : target);
-      target = parsed.searchParams.get('uddg') ?? parsed.href;
-    } catch { continue; }
+    try { const parsed = new URL(target.startsWith('//') ? `https:${target}` : target); target = parsed.searchParams.get('uddg') ?? parsed.href; } catch { continue; }
     if (!/^https?:/i.test(target)) continue;
     const snippetMatch = block.match(/<(?:a|div|span)[^>]+class=["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|span)>/i);
     hits.push({ url: target, title: decodeHtml(anchor[2] ?? ''), snippet: decodeHtml(snippetMatch?.[1] ?? ''), source: 'duckduckgo' });
