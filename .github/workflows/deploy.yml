@@ -1,19 +1,29 @@
-name: Deploy COANTO
+name: Verify COANTO
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        check: [typecheck, lint, build]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: bun run build
+      - run: |
+          case "${{ matrix.check }}" in
+            typecheck) bunx tsc --noEmit ;;
+            lint) bun run lint ;;
+            build) bun run build ;;
+          esac
