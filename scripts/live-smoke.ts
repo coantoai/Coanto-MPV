@@ -1,4 +1,5 @@
-import { discoverCompetitors, getMainSnapshot, hostname } from "../src/lib/analyze.server.ts";
+import { discoverCompetitors, buildPrompt, getMainSnapshot, hostname } from "../src/lib/analyze.server.ts";
+import { runResearchAnalysis } from "../src/lib/ai-engine.server.ts";
 
 const targets = [
   "https://www.allbirds.com/",
@@ -16,17 +17,17 @@ for (const target of targets) {
     for (const competitor of competitors.slice(0, 10)) {
       console.log(`- ${hostname(competitor.url)} [${competitor.sourceType}] ${competitor.title.slice(0, 100)}`);
     }
-    if (!competitors.length) {
-      throw new Error("Live discovery returned zero competitors");
+    if (!competitors.length) throw new Error("Live discovery returned zero competitors");
+
+    if (process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY) {
+      const ai = await runResearchAnalysis(buildPrompt(main, competitors));
+      console.log(`AI provider=${ai.provider} model=${ai.model} webSources=${ai.sources.length} outputChars=${ai.text.length}`);
+      if (!ai.text || ai.text.length < 100) throw new Error("AI returned insufficient analysis output");
+    } else {
+      console.log("AI live call skipped: no independent AI provider secret configured.");
     }
   } catch (error) {
     console.error(`FAIL ${target}:`, error instanceof Error ? error.message : error);
     process.exitCode = 1;
   }
-}
-
-if (process.env.LOVABLE_API_KEY) {
-  console.log("\nAI secret detected: AI gateway is configured for live runtime testing.");
-} else {
-  console.log("\nAI live call not executed: LOVABLE_API_KEY is not configured in this environment.");
 }
