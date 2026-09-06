@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, type AnalyzeInput } from "@/lib/analyze.server";
+import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, validateTargetUrl, type AnalyzeInput } from "@/lib/analyze.server";
 import { runResearchAnalysis } from "@/lib/ai-engine.server";
 import { enforceEvidence } from "@/lib/trust.server";
 
@@ -13,6 +13,9 @@ export const Route = createFileRoute("/api/analyze")({
     handlers: {
       POST: async ({ request }) => {
         try {
+          const contentLength = Number(request.headers.get("content-length") ?? "0");
+          if (contentLength > 64_000) return json({ error: "حجم الطلب كبير جدًا." }, 413);
+
           const { getUserIdFromRequest } = await import("@/lib/auth.server");
           const userId = await getUserIdFromRequest(request);
           if (!userId) return json({ error: "يجب تسجيل الدخول لتشغيل التحليل." }, 401);
@@ -24,9 +27,12 @@ export const Route = createFileRoute("/api/analyze")({
             : [];
           if (!storeUrl) return json({ error: "storeUrl مطلوب" }, 400);
 
+          const urlValidation = validateTargetUrl(storeUrl);
+          if (!urlValidation.ok) return json({ error: urlValidation.reason }, 400);
+
           let main;
           try {
-            main = await getMainSnapshot(storeUrl);
+            main = await getMainSnapshot(urlValidation.url!);
           } catch (error) {
             return json({ error: error instanceof Error ? error.message : "تعذّر جمع أدلة عامة عن الموقع." }, 422);
           }
@@ -44,7 +50,7 @@ export const Route = createFileRoute("/api/analyze")({
             : {}) as Record<string, unknown>;
 
           Object.assign(metadata, {
-            storeUrl: normalizeUrl(storeUrl),
+            storeUrl: normalizeUrl(urlValidation.url!),
             analyzedAt: new Date().toISOString(),
             aiProvider: ai.provider,
             aiModel: ai.model,
@@ -63,7 +69,7 @@ export const Route = createFileRoute("/api/analyze")({
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
             const { data: saved, error } = await supabaseAdmin
               .from("analyses")
-              .insert({ user_id: userId, store_url: normalizeUrl(storeUrl), result_json: analysis as never })
+              .insert({ user_id: userId, store_url: normalizeUrl(urlValidation.url!), result_json: analysis as never })
               .select("id")
               .single();
             if (error) metadata['saveError'] = "تعذّر حفظ التحليل في السجل.";
