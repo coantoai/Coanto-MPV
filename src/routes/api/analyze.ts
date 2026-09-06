@@ -7,7 +7,8 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-export const Route = createFileRoute("/api/analyze" as any)({
+// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
+export const Route = createFileRoute("/api/analyze")({
   server: {
     handlers: {
       POST: async ({ request }) => {
