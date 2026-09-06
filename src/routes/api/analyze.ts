@@ -40,11 +40,10 @@ export const Route = createFileRoute("/api/analyze")({
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
           const metadata = (analysis['metadata'] && typeof analysis['metadata'] === 'object'
-            ? analysis['metadata']
+            ? { ...(analysis['metadata'] as Record<string, unknown>) }
             : {}) as Record<string, unknown>;
 
-          analysis['metadata'] = {
-            ...metadata,
+          Object.assign(metadata, {
             storeUrl: normalizeUrl(storeUrl),
             analyzedAt: new Date().toISOString(),
             aiProvider: ai.provider,
@@ -57,7 +56,8 @@ export const Route = createFileRoute("/api/analyze")({
             caveat: indexedCount
               ? "بعض الأدلة جاءت من فهارس بحث عامة لأن بعض المواقع تمنع الوصول الآلي. لم يتم تجاوز أي حماية؛ الأدلة المفهرسة مميزة عن الزيارة المباشرة."
               : "المصادر المتاحة تمت قراءتها مباشرة.",
-          };
+          });
+          analysis['metadata'] = metadata;
 
           try {
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -72,7 +72,6 @@ export const Route = createFileRoute("/api/analyze")({
             metadata['saveError'] = "تعذّر حفظ التحليل في السجل.";
           }
 
-          analysis['metadata'] = metadata;
           return json(analysis);
         } catch (error) {
           console.error(error);
