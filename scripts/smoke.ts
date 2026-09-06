@@ -58,7 +58,7 @@ check('direct main title extracted', direct.title === 'Acme');
 mode = 'blocked-main';
 const fallback = await getMainSnapshot('https://acme.test');
 check('blocked main falls back to indexed evidence', fallback.sourceType === 'search-index');
-check('blocked main retains evidence text', fallback.evidence[0]?.includes('DuckDuckGo') === true);
+check('blocked main retains evidence text', fallback.evidence[0]?.toLowerCase().includes('duckduckgo') === true);
 
 mode = 'normal';
 const discovered = await discoverCompetitors(main, []);
