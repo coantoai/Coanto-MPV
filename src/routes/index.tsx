@@ -1,0 +1,1 @@
+import{createFileRoute}from"@tanstack/react-router";import CoantoApp from"@/components/CoantoApp";export const Route=createFileRoute("/")({head:()=>({meta:[{title:"COANTO — ذكاء القرار التنافسي"},{name:"description",content:"اكتشاف المنافسين وتحويل أدلة السوق إلى قرارات."}]}),component:CoantoApp});
