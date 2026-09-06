@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, type AnalyzeInput } from "@/lib/analyze.server";
 import { runResearchAnalysis } from "@/lib/ai-engine.server";
+import { enforceEvidence } from "@/lib/trust.server";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -33,12 +34,13 @@ export const Route = createFileRoute("/api/analyze")({
           if (!discovered.length) return json({ error: "لم نجد منافسين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج." }, 422);
 
           const ai = await runResearchAnalysis(buildPrompt(main, discovered));
-          const analysis = parseJsonBlock(ai.text);
+          const analysis = enforceEvidence(parseJsonBlock(ai.text), main, discovered);
           const sources = [main, ...discovered];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
 
           analysis.metadata = {
+            ...(analysis.metadata ?? {}),
             storeUrl: normalizeUrl(storeUrl),
             analyzedAt: new Date().toISOString(),
             aiProvider: ai.provider,
