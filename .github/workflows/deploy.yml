@@ -29,6 +29,37 @@ jobs:
             build) bun run build ;;
           esac
 
+  runtime-smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Start production server
+        run: |
+          bun run start > runtime.log 2>&1 &
+          echo $! > runtime.pid
+          for i in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ > /tmp/coanto.html; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat runtime.log
+          exit 1
+      - name: Validate rendered app
+        run: |
+          test -s /tmp/coanto.html
+          grep -Eqi "COANTO|competitive|decision" /tmp/coanto.html
+      - name: Stop production server
+        if: always()
+        run: |
+          if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
+
   live-discovery:
     runs-on: ubuntu-latest
     steps:
