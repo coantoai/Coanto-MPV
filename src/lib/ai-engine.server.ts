@@ -84,11 +84,7 @@ async function runAnthropic(prompt: string): Promise<AiRun> {
   const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5-1';
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({
       model,
       max_tokens: 12000,
@@ -127,7 +123,10 @@ export function configuredProviders(): AiProvider[] {
 }
 
 export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
-  const requested = (process.env['AI_PROVIDER'] || 'openai').trim().toLowerCase() as AiProvider;
-  if (!['openai', 'gemini', 'anthropic'].includes(requested)) throw new Error(`Unsupported AI_PROVIDER: ${requested}`);
-  return runAiProvider(requested, prompt);
+  const configured = configuredProviders();
+  if (!configured.length) throw new Error('No independent AI provider is configured.');
+
+  const requested = (process.env['AI_PROVIDER'] || '').trim().toLowerCase() as AiProvider;
+  const provider = ['openai', 'gemini', 'anthropic'].includes(requested) && configured.includes(requested) ? requested : configured[0];
+  return runAiProvider(provider, prompt);
 }
