@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { streamText } from "ai";
 import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, type AnalyzeInput } from "@/lib/analyze.server";
-import { createLovableAiGatewayProvider, getLovableAiGatewayRunId } from "@/lib/ai-gateway.server";
+import { runResearchAnalysis } from "@/lib/ai-engine.server";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -23,9 +22,6 @@ export const Route = createFileRoute("/api/analyze")({
             : [];
           if (!storeUrl) return json({ error: "storeUrl مطلوب" }, 400);
 
-          const key = process.env["LOVABLE_API_KEY"];
-          if (!key) return json({ error: "خدمة الذكاء الاصطناعي غير مهيأة." }, 500);
-
           let main;
           try {
             main = await getMainSnapshot(storeUrl);
@@ -36,13 +32,8 @@ export const Route = createFileRoute("/api/analyze")({
           const discovered = await discoverCompetitors(main, competitors);
           if (!discovered.length) return json({ error: "لم نجد منافسين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج." }, 422);
 
-          const gateway = createLovableAiGatewayProvider(key, getLovableAiGatewayRunId(request));
-          const result = streamText({
-            model: gateway("google/gemini-3.7-flash"),
-            prompt: buildPrompt(main, discovered),
-            temperature: 0.15,
-          });
-          const analysis = parseJsonBlock(await result.text);
+          const ai = await runResearchAnalysis(buildPrompt(main, discovered));
+          const analysis = parseJsonBlock(ai.text);
           const sources = [main, ...discovered];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
@@ -50,6 +41,9 @@ export const Route = createFileRoute("/api/analyze")({
           analysis.metadata = {
             storeUrl: normalizeUrl(storeUrl),
             analyzedAt: new Date().toISOString(),
+            aiProvider: ai.provider,
+            aiModel: ai.model,
+            aiWebSources: ai.sources.length,
             sourceCount: sources.length,
             directEvidenceSources: directCount,
             indexedEvidenceSources: indexedCount,
