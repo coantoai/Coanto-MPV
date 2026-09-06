@@ -29,7 +29,7 @@ const main: SiteSnapshot = {
 };
 
 let mode: 'normal' | 'blocked-main' | 'blocked-competitor' = 'normal';
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = (async (input: RequestInfo | URL) => {
   const url = String(input);
   if (url.includes('html.duckduckgo.com')) {
     const rows = [
