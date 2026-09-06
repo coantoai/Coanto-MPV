@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, ArrowUpLeft, CheckCircle2, CircleDot, Clock3, Crosshair, Eye, Search, ShieldCheck, Sparkles, Target, TrendingUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,7 +32,7 @@ export default function CoantoApp() {
   const [error, setError] = useState("");
   const nav = useNavigate();
 
-  async function run(e: React.FormEvent) {
+  async function run(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
@@ -97,28 +97,14 @@ function Results({ analysis: a }: { analysis: Analysis }) {
         <Stat label="الأدلة" value={a.metadata.evidenceCount ?? a.metadata.sourceCount ?? 0} icon={<Eye size={17} />} />
         <div className="rounded-2xl border border-white/10 bg-[#0b121b] p-4"><div className="flex items-center gap-2 text-xs text-slate-500"><ShieldCheck size={16} />قوة الدليل</div><div className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-black ${tone[evidenceStrength] || tone.medium}`}>{labelStrength(evidenceStrength)}</div></div>
       </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <Pulse title="تهديد" icon={<AlertTriangle size={18} />} data={a.decisionPulse?.threat} toneClass="border-red-400/20 bg-red-400/[0.04]" />
-        <Pulse title="فرصة" icon={<TrendingUp size={18} />} data={a.decisionPulse?.opportunity} toneClass="border-emerald-400/20 bg-emerald-400/[0.04]" />
-        <Pulse title="الخطوة التالية" icon={<ArrowUpLeft size={18} />} data={a.decisionPulse?.action} toneClass="border-[#25cdb8]/20 bg-[#25cdb8]/[0.04]" />
-      </section>
-
-      <Section title="المنافسون المكتشفون" subtitle="ليس كل اسم ظهر في البحث منافسًا. هذه القائمة تمر عبر بوابة الأدلة.">
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{a.competitors.map((c, i) => <Competitor key={i} item={c} />)}</div>
-      </Section>
-
+      <section className="grid gap-4 md:grid-cols-3"><Pulse title="تهديد" icon={<AlertTriangle size={18} />} data={a.decisionPulse?.threat} toneClass="border-red-400/20 bg-red-400/[0.04]" /><Pulse title="فرصة" icon={<TrendingUp size={18} />} data={a.decisionPulse?.opportunity} toneClass="border-emerald-400/20 bg-emerald-400/[0.04]" /><Pulse title="الخطوة التالية" icon={<ArrowUpLeft size={18} />} data={a.decisionPulse?.action} toneClass="border-[#25cdb8]/20 bg-[#25cdb8]/[0.04]" /></section>
+      <Section title="المنافسون المكتشفون" subtitle="ليس كل اسم ظهر في البحث منافسًا. هذه القائمة تمر عبر بوابة الأدلة."><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{a.competitors.map((c, i) => <Competitor key={i} item={c} />)}</div></Section>
       <Section title="خريطة الأولوية" subtitle="Impact × Ease — أين تستحق طاقتك أن تذهب أولًا?"><PriorityMatrix items={a.priorityMatrix} /></Section>
       <Section title="إشارات تستحق الانتباه" subtitle="نركّز على ما يمكن أن يغيّر قرارًا، لا على كل ما تغيّر."><div className="space-y-3">{a.signals.slice(0, 8).map((s, i) => <Signal key={i} item={s} />)}</div></Section>
       {a.beforeAfter?.length > 0 && <Section title="قبل / بعد" subtitle="التغيّر المرئي الذي يجب أن تفهم سببه."><div className="grid gap-3 md:grid-cols-2">{a.beforeAfter.map((x, i) => <BeforeAfter key={i} item={x} />)}</div></Section>}
       {a.scenarios?.length > 0 && <Section title="ماذا لو؟" subtitle="السيناريو لا يقرر بدلًا منك؛ يوضح خياراتك وتبعاتها."><div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">{a.scenarios.map((x, i) => <Scenario key={i} item={x} />)}</div></Section>}
       <Section title="خطة العمل" subtitle="من التحليل إلى التنفيذ — بدون قائمة طويلة من الأفكار."><ActionPlan items={a.actions} /></Section>
-
-      <Section title="سلسلة الثقة" subtitle="كل استنتاج يجب أن يبقى قابلًا للتتبع إلى دليل.">
-        <div className="grid gap-3 md:grid-cols-4"><TrustStep icon={<Search size={17} />} title="اكتشاف" text="بحث عام متعدد المصادر" /><TrustStep icon={<Eye size={17} />} title="تحقق" text="زيارة مباشرة أو دليل مفهرس" /><TrustStep icon={<ShieldCheck size={17} />} title="بوابة الدليل" text="حذف الادعاءات غير القابلة للربط" /><TrustStep icon={<Sparkles size={17} />} title="استنتاج" text="AI يميّز الحقيقة عن التقدير" /></div>
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">{(a.trust || []).map((t, i) => <span key={i} className="rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-slate-400">{t.detail}</span>)}</div>
-      </Section>
-
+      <Section title="سلسلة الثقة" subtitle="كل استنتاج يجب أن يبقى قابلًا للتتبع إلى دليل."><div className="grid gap-3 md:grid-cols-4"><TrustStep icon={<Search size={17} />} title="اكتشاف" text="بحث عام متعدد المصادر" /><TrustStep icon={<Eye size={17} />} title="تحقق" text="زيارة مباشرة أو دليل مفهرس" /><TrustStep icon={<ShieldCheck size={17} />} title="بوابة الدليل" text="حذف الادعاءات غير القابلة للربط" /><TrustStep icon={<Sparkles size={17} />} title="استنتاج" text="AI يميّز الحقيقة عن التقدير" /></div><div className="mt-4 flex flex-wrap gap-2 text-xs">{(a.trust || []).map((t, i) => <span key={i} className="rounded-full border border-white/10 bg-white/[0.025] px-3 py-1.5 text-slate-400">{t.detail}</span>)}</div></Section>
       {a.unknowns?.length > 0 && <section className="rounded-3xl border border-amber-400/20 bg-amber-400/[0.035] p-6"><div className="flex items-center gap-2 text-sm font-black text-amber-200"><AlertTriangle size={17} />ما لا نعرفه</div><div className="mt-4 grid gap-2 md:grid-cols-2">{a.unknowns.map((x, i) => <div key={i} className="rounded-xl border border-amber-400/10 bg-black/10 p-3 text-xs leading-6 text-amber-100/70">{x}</div>)}</div></section>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-4 text-[11px] text-slate-600"><span>{a.metadata.caveat}</span><span>{a.metadata.aiProvider} · {a.metadata.aiModel} · {a.metadata.analyzedAt ? new Date(a.metadata.analyzedAt).toLocaleString("ar-LB") : ""}</span></div>
     </div>
