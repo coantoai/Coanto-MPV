@@ -30,3 +30,17 @@ jobs:
             smoke) bun run test:smoke ;;
             build) bun run build ;;
           esac
+
+  live-discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/live-smoke.ts
+        env:
+          BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+          BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
+          LOVABLE_API_KEY: ${{ secrets.LOVABLE_API_KEY }}
