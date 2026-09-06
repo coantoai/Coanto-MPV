@@ -7,7 +7,7 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-export const Route = createFileRoute("/api/analyze")({
+export const Route = createFileRoute("/api/analyze" as any)({
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -38,9 +38,12 @@ export const Route = createFileRoute("/api/analyze")({
           const sources = [main, ...discovered];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
+          const metadata = (analysis['metadata'] && typeof analysis['metadata'] === 'object'
+            ? analysis['metadata']
+            : {}) as Record<string, unknown>;
 
-          analysis.metadata = {
-            ...(analysis.metadata ?? {}),
+          analysis['metadata'] = {
+            ...metadata,
             storeUrl: normalizeUrl(storeUrl),
             analyzedAt: new Date().toISOString(),
             aiProvider: ai.provider,
@@ -59,15 +62,16 @@ export const Route = createFileRoute("/api/analyze")({
             const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
             const { data: saved, error } = await supabaseAdmin
               .from("analyses")
-              .insert({ user_id: userId, store_url: normalizeUrl(storeUrl), result_json: analysis })
+              .insert({ user_id: userId, store_url: normalizeUrl(storeUrl), result_json: analysis as never })
               .select("id")
               .single();
-            if (error) analysis.metadata.saveError = "تعذّر حفظ التحليل في السجل.";
-            else analysis.metadata.id = saved.id;
+            if (error) metadata['saveError'] = "تعذّر حفظ التحليل في السجل.";
+            else metadata['id'] = saved.id;
           } catch {
-            analysis.metadata.saveError = "تعذّر حفظ التحليل في السجل.";
+            metadata['saveError'] = "تعذّر حفظ التحليل في السجل.";
           }
 
+          analysis['metadata'] = metadata;
           return json(analysis);
         } catch (error) {
           console.error(error);
