@@ -1,4 +1,4 @@
-import { discoverCompetitors, getMainSnapshot, hostname, normalizeUrl, parseJsonBlock, type SiteSnapshot } from '../src/lib/analyze.server.ts';
+import { discoverCompetitors, getMainSnapshot, hostname, normalizeUrl, parseJsonBlock, validateTargetUrl, type SiteSnapshot } from '../src/lib/analyze.server.ts';
 
 const originalFetch = globalThis.fetch;
 let passed = 0;
@@ -18,6 +18,9 @@ check('normalize bare domain', normalizeUrl('example.com') === 'https://example.
 check('preserve https', normalizeUrl('https://example.com') === 'https://example.com');
 check('hostname strips www', hostname('https://www.example.com/path') === 'example.com');
 check('hostname rejects malformed input', hostname('not a valid url %%') === '');
+check('public https target accepted', validateTargetUrl('https://example.com').ok === true);
+check('localhost target rejected', validateTargetUrl('http://localhost:3000').ok === false);
+check('private IPv4 target rejected', validateTargetUrl('http://192.168.1.10').ok === false);
 check('JSON block parses fenced payload', parseJsonBlock('prefix {"ok":true} suffix').ok === true);
 check('JSON block rejects missing object', (() => { try { parseJsonBlock('no json'); return false; } catch { return true; } })());
 
@@ -26,7 +29,7 @@ const main: SiteSnapshot = {
 };
 
 let mode: 'normal' | 'blocked-main' | 'blocked-competitor' = 'normal';
-globalThis.fetch = (async (input: RequestInfo | URL) => {
+globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   if (url.includes('html.duckduckgo.com')) {
     const rows = [
