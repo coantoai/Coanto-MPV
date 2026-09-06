@@ -29,7 +29,7 @@ function textFromOpenAi(response: any): string {
 
 async function runOpenAi(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('OPENAI_API_KEY');
-  const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-5.2';
+  const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-6-astra';
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -54,7 +54,7 @@ async function runOpenAi(prompt: string): Promise<AiRun> {
 
 async function runGemini(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('GEMINI_API_KEY');
-  const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.1-pro-preview';
+  const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.7-flash';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,14 +81,13 @@ async function runGemini(prompt: string): Promise<AiRun> {
 
 async function runAnthropic(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('ANTHROPIC_API_KEY');
-  const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-opus-5';
+  const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5-1';
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
-      'anthropic-dangerous-direct-browser-access': 'false',
     },
     body: JSON.stringify({
       model,
