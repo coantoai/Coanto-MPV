@@ -44,9 +44,7 @@ jobs:
           bun run start > runtime.log 2>&1 &
           echo $! > runtime.pid
           for i in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:3000/ > /tmp/coanto.html; then
-              exit 0
-            fi
+            if curl --fail --silent --show-error http://127.0.0.1:3000/ > /tmp/coanto.html; then exit 0; fi
             sleep 1
           done
           cat runtime.log
@@ -57,10 +55,10 @@ jobs:
           grep -Eqi "COANTO|competitive|decision" /tmp/coanto.html
       - name: Stop production server
         if: always()
-        run: |
-          if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
+        run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
 
   live-discovery:
+    if: ${{ vars.ENABLE_LIVE_DISCOVERY == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
