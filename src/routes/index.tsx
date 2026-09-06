@@ -1,1 +1,2 @@
-import{createFileRoute}from"@tanstack/react-router";import CoantoApp from"@/components/CoantoApp";export const Route=createFileRoute("/" as any)({head:()=>({meta:[{title:"COANTO — ذكاء القرار التنافسي"},{name:"description",content:"اكتشاف المنافسين وتحويل أدلة السوق إلى قرارات."}]}),component:CoantoApp});
+import{createFileRoute}from"@tanstack/react-router";import CoantoApp from"@/components/CoantoApp";// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
+export const Route=createFileRoute("/")({head:()=>({meta:[{title:"COANTO — ذكاء القرار التنافسي"},{name:"description",content:"اكتشاف المنافسين وتحويل أدلة السوق إلى قرارات."}]}),component:CoantoApp});
