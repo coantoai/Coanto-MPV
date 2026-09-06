@@ -1,0 +1,52 @@
+name: Deploy COANTO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [staging]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+jobs:
+  deploy-preview:
+    if: github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test:smoke
+      - run: bun run build
+      - run: npx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
+      - run: npx vercel@latest build --token="$VERCEL_TOKEN"
+      - run: npx vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN"
+
+  deploy-production:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test:smoke
+      - run: bun run build
+      - run: npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - run: npx vercel@latest build --prod --token="$VERCEL_TOKEN"
+      - run: npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
