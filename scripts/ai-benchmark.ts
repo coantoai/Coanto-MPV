@@ -52,7 +52,13 @@ async function callProvider(provider: Provider, prompt: string) {
 function parseCompetitors(text: string): string[] {
   const start = text.indexOf('{'); const end = text.lastIndexOf('}');
   if (start >= 0 && end > start) {
-    try { const parsed = JSON.parse(text.slice(start, end + 1)); const values = parsed.competitors ?? parsed.competitor_domains ?? []; if (Array.isArray(values)) return values.map((x: any) => typeof x === 'string' ? x : x?.domain || x?.url || x?.name).filter(Boolean).slice(0, 5); } catch {}
+    try {
+      const parsed = JSON.parse(text.slice(start, end + 1));
+      const values = parsed.competitors ?? parsed.competitor_domains ?? [];
+      if (Array.isArray(values)) return values.map((x: any) => typeof x === 'string' ? x : x?.domain || x?.url || x?.name).filter(Boolean).slice(0, 5);
+    } catch {
+      return [];
+    }
   }
   return [];
 }
