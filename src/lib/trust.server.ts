@@ -5,7 +5,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 function stringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim()).map((item) => item.trim()) : [];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()) : [];
 }
 
 function safeSourceUrls(value: unknown, allowedHosts: Set<string>, aiSources: Set<string>) {
@@ -28,7 +28,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   allowed.add(mainHost);
   const aiSources = new Set(aiSourceUrls.filter((url) => /^https?:\/\//i.test(url)).map((url) => {
     try { return new URL(url).toString(); } catch { return ''; }
-  }).filter(Boolean));
+  }).filter((url): url is string => Boolean(url)));
 
   const rows = Array.isArray(result['competitors']) ? result['competitors'] : [];
   result['competitors'] = rows.flatMap((row) => {
@@ -61,8 +61,8 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     const sourceUrls = safeSourceUrls(item['sourceUrls'], allowed, aiSources);
     const evidence = typeof item['evidence'] === 'string' ? item['evidence'].trim() : '';
     const competitor = typeof item['competitor'] === 'string' ? item['competitor'].trim() : '';
-    const linkedCompetitor = competitor && [...evidenceByHost.entries()].some(([host, site]) => competitor.toLowerCase().includes(host) || competitor.toLowerCase().includes(site.title.toLowerCase()));
-    return { ...item, sourceUrls, evidenceStatus: sourceUrls.length || evidence || linkedCompetitor ? 'linked' : 'unlinked' };
+    const linkedCompetitor = Boolean(competitor) && [...evidenceByHost.entries()].some(([host, site]) => competitor.toLowerCase().includes(host) || competitor.toLowerCase().includes(site.title.toLowerCase()));
+    return { ...item, sourceUrls, evidenceStatus: sourceUrls.length > 0 || Boolean(evidence) || linkedCompetitor ? 'linked' : 'unlinked' };
   });
 
   const unknowns = Array.isArray(result['unknowns']) ? result['unknowns'].filter((value): value is string => typeof value === 'string') : [];
