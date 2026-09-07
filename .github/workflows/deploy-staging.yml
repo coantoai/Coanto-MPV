@@ -24,10 +24,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run test:smoke
+      - run: bun run test:ai-contract
       - run: bun run build
       - run: npx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
       - run: npx vercel@latest build --token="$VERCEL_TOKEN"
@@ -42,10 +43,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run test:smoke
+      - run: bun run test:ai-contract
       - run: bun run build
       - run: npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
       - run: npx vercel@latest build --prod --token="$VERCEL_TOKEN"
