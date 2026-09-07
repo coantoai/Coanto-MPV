@@ -3,8 +3,10 @@ import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJ
 import { runResearchAnalysis } from "@/lib/ai-engine.server";
 import { enforceEvidence } from "@/lib/trust.server";
 
+const MAX_REQUEST_BYTES = 64_000;
+
 function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
 }
 
 // @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
@@ -14,13 +16,26 @@ export const Route = createFileRoute("/api/analyze")({
       POST: async ({ request }) => {
         try {
           const contentLength = Number(request.headers.get("content-length") ?? "0");
-          if (contentLength > 64_000) return json({ error: "حجم الطلب كبير جدًا." }, 413);
+          if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+            return json({ error: "حجم الطلب كبير جدًا." }, 413);
+          }
+
+          const rawBody = await request.text();
+          if (new TextEncoder().encode(rawBody).byteLength > MAX_REQUEST_BYTES) {
+            return json({ error: "حجم الطلب كبير جدًا." }, 413);
+          }
+
+          let body: Partial<AnalyzeInput>;
+          try {
+            body = JSON.parse(rawBody) as Partial<AnalyzeInput>;
+          } catch {
+            return json({ error: "بيانات الطلب غير صالحة." }, 400);
+          }
 
           const { getUserIdFromRequest } = await import("@/lib/auth.server");
           const userId = await getUserIdFromRequest(request);
           if (!userId) return json({ error: "يجب تسجيل الدخول لتشغيل التحليل." }, 401);
 
-          const body = (await request.json()) as Partial<AnalyzeInput>;
           const storeUrl = typeof body.storeUrl === "string" ? body.storeUrl.trim() : "";
           const competitors = Array.isArray(body.competitors)
             ? body.competitors.filter((item): item is string => typeof item === "string").slice(0, 10)
@@ -33,14 +48,21 @@ export const Route = createFileRoute("/api/analyze")({
           let main;
           try {
             main = await getMainSnapshot(urlValidation.url!);
-          } catch (error) {
-            return json({ error: error instanceof Error ? error.message : "تعذّر جمع أدلة عامة عن الموقع." }, 422);
+          } catch {
+            return json({ error: "تعذّر جمع أدلة عامة عن الموقع." }, 422);
           }
 
           const discovered = await discoverCompetitors(main, competitors);
           if (!discovered.length) return json({ error: "لم نجد منافسين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج." }, 422);
 
-          const ai = await runResearchAnalysis(buildPrompt(main, discovered));
+          let ai;
+          try {
+            ai = await runResearchAnalysis(buildPrompt(main, discovered));
+          } catch (error) {
+            console.error("AI analysis failed", error);
+            return json({ error: "تعذّر تشغيل محرك التحليل حاليًا." }, 502);
+          }
+
           const analysis = enforceEvidence(parseJsonBlock(ai.text), main, discovered);
           const sources = [main, ...discovered];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
@@ -80,8 +102,8 @@ export const Route = createFileRoute("/api/analyze")({
 
           return json(analysis);
         } catch (error) {
-          console.error(error);
-          return json({ error: error instanceof Error ? error.message : "حدث خطأ أثناء التحليل" }, 500);
+          console.error("Analysis request failed", error);
+          return json({ error: "حدث خطأ أثناء التحليل. حاول مرة أخرى." }, 500);
         }
       },
     },
