@@ -74,7 +74,7 @@ jobs:
       - run: bun install
       - name: Verify AI provider secret wiring without exposing secrets
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
         run: |
@@ -93,7 +93,7 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
@@ -117,7 +117,7 @@ jobs:
       - run: bun install
       - name: Verify OpenRouter secret wiring without exposing the value
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
         run: |
           [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
       - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
@@ -126,7 +126,7 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
