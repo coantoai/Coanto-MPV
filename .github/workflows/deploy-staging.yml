@@ -30,9 +30,17 @@ jobs:
       - run: bun run test:smoke
       - run: bun run test:ai-contract
       - run: bun run build
-      - run: npx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
-      - run: npx vercel@latest build --token="$VERCEL_TOKEN"
-      - run: npx vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN"
+      - name: Verify Vercel deployment wiring
+        run: |
+          [ -n "$VERCEL_ORG_ID" ] || { echo "VERCEL_ORG_ID=missing"; exit 1; }
+          [ -n "$VERCEL_PROJECT_ID" ] || { echo "VERCEL_PROJECT_ID=missing"; exit 1; }
+          [ -n "$VERCEL_TOKEN" ] || { echo "VERCEL_TOKEN=missing"; exit 1; }
+          echo "Vercel deployment credentials are present."
+      - name: Deploy preview
+        run: |
+          timeout 120s npx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          timeout 180s npx vercel@latest build --token="$VERCEL_TOKEN"
+          timeout 120s npx vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN"
 
   deploy-production:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -49,6 +57,14 @@ jobs:
       - run: bun run test:smoke
       - run: bun run test:ai-contract
       - run: bun run build
-      - run: npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-      - run: npx vercel@latest build --prod --token="$VERCEL_TOKEN"
-      - run: npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Verify Vercel deployment wiring
+        run: |
+          [ -n "$VERCEL_ORG_ID" ] || { echo "VERCEL_ORG_ID=missing"; exit 1; }
+          [ -n "$VERCEL_PROJECT_ID" ] || { echo "VERCEL_PROJECT_ID=missing"; exit 1; }
+          [ -n "$VERCEL_TOKEN" ] || { echo "VERCEL_TOKEN=missing"; exit 1; }
+          echo "Vercel deployment credentials are present."
+      - name: Deploy production
+        run: |
+          timeout 120s npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          timeout 180s npx vercel@latest build --prod --token="$VERCEL_TOKEN"
+          timeout 120s npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
