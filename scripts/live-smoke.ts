@@ -1,7 +1,7 @@
 import { discoverCompetitors, getMainSnapshot, hostname } from "../src/lib/analyze.server.ts";
 import { filterCommercialCompetitors } from "../src/lib/competitor-filter.server.ts";
 
-const targets = ["https://www.allbirds.com/", "https://www.adidas.com/qa/en", "https://www.noon.com/uae-en/"];
+const targets = ["https://www.allbirds.com/", "https://www.nike.com/", "https://www.shopify.com/"];
 
 let failures = 0;
 for (const target of targets) {
