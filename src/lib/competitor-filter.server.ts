@@ -12,6 +12,7 @@ const obviousNonCompetitorHosts = [
   'econosa.com',
   'yoursustainableguide.com',
   'markets.apistemic.com',
+  'koalagains.com',
 ];
 
 const categoryGroups = [
@@ -68,6 +69,16 @@ function categoryMatches(main: SiteSnapshot, candidate: SiteSnapshot) {
   return categoryGroups.filter((group) => group.some((term) => mainText.includes(term)) && group.some((term) => candidateText.includes(term))).length;
 }
 
+function strongCategoryMatches(main: SiteSnapshot, candidate: SiteSnapshot) {
+  const mainText = textOf(main);
+  const candidateText = textOf(candidate);
+  return categoryGroups.filter((group) => {
+    const mainHits = group.filter((term) => mainText.includes(term)).length;
+    const candidateHits = group.filter((term) => candidateText.includes(term)).length;
+    return mainHits >= 2 && candidateHits >= 2;
+  }).length;
+}
+
 function editorialScore(site: SiteSnapshot) {
   const text = `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')}`;
   return editorialSignals.test(text) ? 1 : 0;
@@ -84,15 +95,16 @@ export function filterCommercialCompetitors(main: SiteSnapshot, candidates: Site
     const commerce = commerceScore(site);
     const editorial = editorialScore(site);
     const categoryOverlap = categoryMatches(main, site);
+    const strongCategoryOverlap = strongCategoryMatches(main, site);
     if (editorial && commerce < 4) return false;
     if (commerce < 2) return false;
-    return categoryOverlap > 0;
+    return strongCategoryOverlap > 0 || (categoryOverlap > 0 && commerce >= 5);
   });
 
   return accepted
     .sort((a, b) => {
-      const scoreA = commerceScore(a) + categoryMatches(main, a) * 3 - editorialScore(a);
-      const scoreB = commerceScore(b) + categoryMatches(main, b) * 3 - editorialScore(b);
+      const scoreA = commerceScore(a) + strongCategoryMatches(main, a) * 6 + categoryMatches(main, a) * 2 - editorialScore(a);
+      const scoreB = commerceScore(b) + strongCategoryMatches(main, b) * 6 + categoryMatches(main, b) * 2 - editorialScore(b);
       return scoreB - scoreA;
     })
     .slice(0, 10);
