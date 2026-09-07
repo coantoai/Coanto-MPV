@@ -1,3 +1,5 @@
+import { validateAiOutput } from './ai-output.server';
+
 export type AiProvider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 
 export type AiRun = {
@@ -9,7 +11,7 @@ export type AiRun = {
 
 type JsonRecord = Record<string, unknown>;
 
-const jsonInstruction = `Return JSON only. Do not invent facts. Every material claim must be traceable to supplied evidence or a web source. Distinguish observed facts, estimates, inferences, recommendations, and unknowns. Prefer explicit uncertainty over filling gaps.`;
+const jsonInstruction = `Return JSON only. Do not invent facts. Every material claim must be traceable to supplied evidence or a web source. Distinguish observed facts, estimates, inferences, recommendations, and unknowns. Prefer explicit uncertainty over filling gaps. The response must contain a non-empty competitors array; each competitor must include a name and URL. Never replace missing evidence with a guess.`;
 
 function requireEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -77,7 +79,7 @@ function textFromOpenAi(response: unknown): string {
 
 async function runOpenAi(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('OPENAI_API_KEY');
-  const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-6-astra';
+  const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-5.6-luna';
   const response = await providerRequest('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -106,13 +108,14 @@ async function runOpenAi(prompt: string): Promise<AiRun> {
 
 async function runGemini(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('GEMINI_API_KEY');
-  const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.7-flash';
+  const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.8-flash';
   const response = await providerRequest(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: `${jsonInstruction}\n\n${prompt}` }] }],
       tools: [{ google_search: {} }],
+      generationConfig: { responseMimeType: 'application/json' },
     }),
   }, 'Gemini');
   if (!response.ok) await providerError(response, 'Gemini');
@@ -172,7 +175,7 @@ async function runOpenRouter(prompt: string): Promise<AiRun> {
 
 async function runAnthropic(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('ANTHROPIC_API_KEY');
-  const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5-1';
+  const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5';
   const response = await providerRequest('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -215,6 +218,13 @@ export function configuredProviders(): AiProvider[] {
   return providers;
 }
 
+function parseCandidate(text: string) {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('AI returned no JSON object.');
+  return validateAiOutput(JSON.parse(text.slice(start, end + 1)));
+}
+
 export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
   const configured = configuredProviders();
   if (!configured.length) throw new Error('No independent AI provider is configured.');
@@ -227,7 +237,9 @@ export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
   const failures: string[] = [];
   for (const provider of ordered) {
     try {
-      return await runAiProvider(provider, prompt);
+      const run = await runAiProvider(provider, prompt);
+      parseCandidate(run.text);
+      return run;
     } catch (error) {
       failures.push(`${provider}: ${error instanceof Error ? error.message : 'request failed'}`);
     }
