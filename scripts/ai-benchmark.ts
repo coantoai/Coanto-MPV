@@ -1,6 +1,6 @@
 import { BENCHMARK_CASES } from './ai-benchmark-cases';
 
-type Provider = 'openai' | 'gemini' | 'anthropic';
+type Provider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 type CompetitorResult = { name?: string; domain?: string; url?: string; why?: string; evidence?: string; sourceUrls?: string[] };
 type Result = {
   provider: Provider;
@@ -13,10 +13,16 @@ type Result = {
   error?: string;
 };
 
-const providerKeys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
+const providerKeys: Record<Provider, string> = {
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+};
 const models: Record<Provider, string> = {
   openai: process.env.OPENAI_MODEL || 'gpt-6-astra',
   gemini: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto',
   anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5-1',
 };
 
@@ -35,6 +41,7 @@ function normalizeCompetitor(value: string) {
 function extractText(data: any) {
   if (typeof data?.output_text === 'string') return data.output_text;
   if (Array.isArray(data?.output)) return data.output.flatMap((item: any) => item?.content ?? []).map((item: any) => item?.text).filter(Boolean).join('\n');
+  if (Array.isArray(data?.choices)) return data.choices.map((choice: any) => choice?.message?.content).filter(Boolean).join('\n');
   if (Array.isArray(data?.candidates)) return data.candidates.flatMap((c: any) => c?.content?.parts ?? []).map((p: any) => p?.text).filter(Boolean).join('\n');
   if (Array.isArray(data?.content)) return data.content.map((item: any) => item?.text).filter(Boolean).join('\n');
   return '';
@@ -43,6 +50,7 @@ function extractText(data: any) {
 function extractSources(data: any): string[] {
   const urls = [
     ...(data?.output ?? []).flatMap((item: any) => item?.action?.sources ?? []).map((x: any) => x?.url),
+    ...(data?.choices ?? []).flatMap((choice: any) => choice?.message?.annotations ?? []).map((x: any) => x?.url_citation?.url),
     ...(data?.candidates ?? []).flatMap((c: any) => c?.groundingMetadata?.groundingChunks ?? []).map((x: any) => x?.web?.uri),
     ...(data?.content ?? []).flatMap((x: any) => x?.content ?? []).map((x: any) => x?.url),
   ];
@@ -69,6 +77,25 @@ async function callProvider(provider: Provider, prompt: string) {
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }),
     });
     if (!response.ok) throw new Error(`Gemini ${response.status}: ${await response.text()}`);
+    const data = await response.json();
+    return { text: extractText(data), sources: extractSources(data) };
+  }
+  if (provider === 'openrouter') {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.COANTO_SITE_URL || 'https://coanto.com',
+        'X-Title': 'COANTO AI Benchmark',
+      },
+      body: JSON.stringify({
+        model: models.openrouter,
+        messages: [{ role: 'user', content: prompt }],
+        tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }],
+      }),
+    });
+    if (!response.ok) throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
     const data = await response.json();
     return { text: extractText(data), sources: extractSources(data) };
   }
@@ -117,7 +144,7 @@ function score(found: CompetitorResult[], expected: string[]) {
   };
 }
 
-const providers: Provider[] = ['openai', 'gemini', 'anthropic'];
+const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
 const results: Result[] = [];
 const configured = providers.filter((provider) => Boolean(process.env[providerKeys[provider]]));
 
@@ -150,6 +177,7 @@ const summary = providers.map((provider) => {
     model: models[provider],
     status: process.env[providerKeys[provider]] ? 'tested' : 'blocked-missing-secret',
     cases: rows.length,
+    failedCases: results.filter((r) => r.provider === provider && Boolean(r.error)).length,
     meanPrecisionAt5: scored.length ? scored.reduce((a, b) => a + b.precisionAt5, 0) / scored.length : null,
     meanRecallAt5: scored.length ? scored.reduce((a, b) => a + b.recallAt5, 0) / scored.length : null,
     meanEvidenceCoverage: scored.length ? scored.reduce((a, b) => a + b.evidenceCoverage, 0) / scored.length : null,
@@ -159,7 +187,7 @@ const summary = providers.map((provider) => {
 
 const report = {
   generatedAt: new Date().toISOString(),
-  benchmarkVersion: '2026-09-v2',
+  benchmarkVersion: '2026-09-v3',
   cases: BENCHMARK_CASES.length,
   status: configured.length ? 'tested' : 'blocked-missing-provider-secrets',
   configuredProviders: configured,
