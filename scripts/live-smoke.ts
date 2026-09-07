@@ -2,7 +2,12 @@ import { discoverCompetitors, buildPrompt, getMainSnapshot, hostname } from "../
 import { runResearchAnalysis } from "../src/lib/ai-engine.server.ts";
 
 const targets = ["https://www.allbirds.com/", "https://www.adidas.com/qa/en", "https://www.noon.com/uae-en/"];
-const hasAiProvider = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
+const hasAiProvider = Boolean(
+  process.env.OPENAI_API_KEY ||
+  process.env.GEMINI_API_KEY ||
+  process.env.OPENROUTER_API_KEY ||
+  process.env.ANTHROPIC_API_KEY,
+);
 
 if (!hasAiProvider) console.log("LIVE AI GATED: no independent AI provider configured; discovery will still use the public fallback search path.");
 
