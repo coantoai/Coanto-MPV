@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ArrowUpLeft, CheckCircle2, Eye, ShieldCheck, Sparkles, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import type { ReactNode } from "react";
 
 export const Route = createFileRoute("/demo")({
   component: DemoPage,
@@ -37,10 +38,10 @@ function DemoPage() {
     </main>
   </div>;
 }
-function Stat({label,value,icon}:{label:string;value:string;icon:React.ReactNode}){return <div className="rounded-2xl border border-white/10 bg-[#0b121b] p-4"><div className="flex items-center gap-2 text-xs text-slate-500">{icon}{label}</div><div className="mt-2 text-3xl font-black">{value}</div></div>}
-function Pulse({title,data}:{title:string;data:any}){return <div className="rounded-3xl border border-white/10 bg-[#0b121b] p-5"><div className="flex justify-between text-xs font-black text-slate-400"><span>{title}</span><span className="rounded-full border border-white/10 px-2 py-1 text-[10px]">{data.level}</span></div><div className="mt-4 text-lg font-black">{data.title}</div><p className="mt-2 text-sm leading-7 text-slate-400">{data.description}</p></div>}
+function Stat({label,value,icon}:{label:string;value:string;icon:ReactNode}){return <div className="rounded-2xl border border-white/10 bg-[#0b121b] p-4"><div className="flex items-center gap-2 text-xs text-slate-500">{icon}{label}</div><div className="mt-2 text-3xl font-black">{value}</div></div>}
+function Pulse({title,data}:{title:string;data:{title:string;description:string;level:string}}){return <div className="rounded-3xl border border-white/10 bg-[#0b121b] p-5"><div className="flex justify-between text-xs font-black text-slate-400"><span>{title}</span><span className="rounded-full border border-white/10 px-2 py-1 text-[10px]">{data.level}</span></div><div className="mt-4 text-lg font-black">{data.title}</div><p className="mt-2 text-sm leading-7 text-slate-400">{data.description}</p></div>}
 function Metric({label,value}:{label:string;value:number}){return <div className="mt-3"><div className="mb-1 flex justify-between text-[10px] text-slate-600"><span>{label}</span><span>{value}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-[#25cdb8]" style={{width:`${value}%`}}/></div></div>}
 function SectionTitle({title,subtitle}:{title:string;subtitle:string}){return <div className="mb-4"><h2 className="text-lg font-black">{title}</h2><p className="mt-1 text-xs text-slate-600">{subtitle}</p></div>}
-function Panel({title,children}:{title:string;children:React.ReactNode}){return <section className="rounded-3xl border border-white/10 bg-[#0b121b] p-6"><h2 className="mb-4 text-lg font-black">{title}</h2>{children}</section>}
+function Panel({title,children}:{title:string;children:ReactNode}){return <section className="rounded-3xl border border-white/10 bg-[#0b121b] p-6"><h2 className="mb-4 text-lg font-black">{title}</h2>{children}</section>}
 function Priority({title,impact,ease}:{title:string;impact:string;ease:string}){return <div className="rounded-2xl border border-white/[0.07] bg-[#090f17] p-4"><b className="text-sm">{title}</b><div className="mt-2 flex gap-2 text-[10px] text-slate-500"><span>Impact: {impact}</span><span>Ease: {ease}</span></div></div>}
 function Action({n,text}:{n:string;text:string}){return <div className="flex gap-3 border-b border-white/[0.06] py-3 last:border-0"><span className="text-xs font-black text-[#25cdb8]">{n}</span><span className="text-sm text-slate-300">{text}</span></div>}
