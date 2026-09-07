@@ -1,4 +1,4 @@
-export type AiProvider = 'openai' | 'gemini' | 'anthropic';
+export type AiProvider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 
 export type AiRun = {
   provider: AiProvider;
@@ -136,6 +136,40 @@ async function runGemini(prompt: string): Promise<AiRun> {
   return { provider: 'gemini', model, text, sources: [...new Set(sources)] };
 }
 
+async function runOpenRouter(prompt: string): Promise<AiRun> {
+  const apiKey = requireEnv('OPENROUTER_API_KEY');
+  const model = process.env['OPENROUTER_MODEL']?.trim() || 'openrouter/auto';
+  const response = await providerRequest('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env['COANTO_SITE_URL']?.trim() || 'https://coanto.com',
+      'X-Title': 'COANTO',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: `${jsonInstruction}\n\n${prompt}` }],
+      tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }],
+    }),
+  }, 'OpenRouter');
+  if (!response.ok) await providerError(response, 'OpenRouter');
+  const data = record(await response.json());
+  const choices = array(data['choices']);
+  const first = choices.length ? record(choices[0]) : {};
+  const message = record(first['message']);
+  const text = stringValue(message['content']).trim();
+  if (!text) throw new Error('OpenRouter returned no text output.');
+  const sources: string[] = [];
+  for (const annotation of array(message['annotations'])) {
+    const value = record(annotation);
+    const citation = record(value['url_citation']);
+    const url = stringValue(citation['url']);
+    if (url) sources.push(url);
+  }
+  return { provider: 'openrouter', model, text, sources: [...new Set(sources)] };
+}
+
 async function runAnthropic(prompt: string): Promise<AiRun> {
   const apiKey = requireEnv('ANTHROPIC_API_KEY');
   const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5-1';
@@ -168,6 +202,7 @@ async function runAnthropic(prompt: string): Promise<AiRun> {
 export async function runAiProvider(provider: AiProvider, prompt: string): Promise<AiRun> {
   if (provider === 'openai') return runOpenAi(prompt);
   if (provider === 'gemini') return runGemini(prompt);
+  if (provider === 'openrouter') return runOpenRouter(prompt);
   return runAnthropic(prompt);
 }
 
@@ -175,6 +210,7 @@ export function configuredProviders(): AiProvider[] {
   const providers: AiProvider[] = [];
   if (process.env['OPENAI_API_KEY']?.trim()) providers.push('openai');
   if (process.env['GEMINI_API_KEY']?.trim()) providers.push('gemini');
+  if (process.env['OPENROUTER_API_KEY']?.trim()) providers.push('openrouter');
   if (process.env['ANTHROPIC_API_KEY']?.trim()) providers.push('anthropic');
   return providers;
 }
@@ -184,6 +220,17 @@ export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
   if (!configured.length) throw new Error('No independent AI provider is configured.');
 
   const requested = (process.env['AI_PROVIDER'] || '').trim().toLowerCase() as AiProvider;
-  const provider = ['openai', 'gemini', 'anthropic'].includes(requested) && configured.includes(requested) ? requested : configured[0];
-  return runAiProvider(provider, prompt);
+  const ordered = requested && configured.includes(requested)
+    ? [requested, ...configured.filter((provider) => provider !== requested)]
+    : configured;
+
+  const failures: string[] = [];
+  for (const provider of ordered) {
+    try {
+      return await runAiProvider(provider, prompt);
+    } catch (error) {
+      failures.push(`${provider}: ${error instanceof Error ? error.message : 'request failed'}`);
+    }
+  }
+  throw new Error(`All configured AI providers failed. ${failures.join(' | ')}`.slice(0, 1200));
 }
