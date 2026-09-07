@@ -80,6 +80,8 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
 
@@ -98,6 +100,8 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
       - uses: actions/upload-artifact@v4
