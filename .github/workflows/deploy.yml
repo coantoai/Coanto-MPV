@@ -14,6 +14,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         check: [typecheck, lint, smoke, build]
     steps:
@@ -71,7 +72,10 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
-      - run: bun scripts/live-smoke.ts
+      - name: Run live discovery
+        id: live
+        continue-on-error: true
+        run: bun scripts/live-smoke.ts 2>&1 | tee live-smoke.log
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
@@ -80,10 +84,19 @@ jobs:
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      - name: Upload live discovery diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coanto-live-discovery
+          path: live-smoke.log
+      - name: Enforce live discovery result
+        if: steps.live.outcome == 'failure'
+        run: exit 1
 
   ai-benchmark:
     runs-on: ubuntu-latest
@@ -93,14 +106,13 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
-      # Benchmark is intentionally triggered on main pushes so configured provider secrets are exercised.
       - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
           ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
