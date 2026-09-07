@@ -108,13 +108,13 @@ jobs:
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
       - name: Record live discovery outcome
         if: always()
         run: echo "live-discovery outcome=${{ steps.live.outcome }} conclusion=${{ steps.live.conclusion }}"
@@ -149,13 +149,13 @@ jobs:
           bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
       - name: Record AI benchmark outcome
         if: always()
         run: echo "ai-benchmark outcome=${{ steps.benchmark.outcome }} conclusion=${{ steps.benchmark.conclusion }}"
