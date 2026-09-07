@@ -21,7 +21,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: |
           case "${{ matrix.check }}" in
             typecheck) bun run typecheck ;;
@@ -38,7 +38,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun run build
       - name: Start production server
         run: |
@@ -70,7 +70,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       - run: bun scripts/live-smoke.ts
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
@@ -92,7 +92,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: bun install --frozen-lockfile
+      - run: bun install
       # Benchmark is intentionally triggered on main pushes so configured provider secrets are exercised.
       - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
