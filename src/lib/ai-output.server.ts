@@ -47,8 +47,8 @@ function normalizeCompetitor(value: unknown): Record<string, unknown> | null {
   if (typeof value === 'string' && value.trim()) return { name: value.trim(), url: value.trim() };
   if (!value || typeof value !== 'object') return null;
   const item = value as Record<string, unknown>;
-  const name = typeof item.name === 'string' ? item.name.trim() : '';
-  const url = typeof item.url === 'string' ? item.url.trim() : typeof item.domain === 'string' ? item.domain.trim() : '';
+  const name = typeof item['name'] === 'string' ? item['name'].trim() : '';
+  const url = typeof item['url'] === 'string' ? item['url'].trim() : typeof item['domain'] === 'string' ? item['domain'].trim() : '';
   if (!name || !url) return null;
   return { ...item, name, url };
 }
@@ -60,25 +60,25 @@ function normalizeCompetitor(value: unknown): Record<string, unknown> | null {
 export function validateAiOutput(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object') throw new Error('AI output is not a JSON object.');
   const raw = value as Record<string, unknown>;
-  if (!Array.isArray(raw.competitors)) throw new Error('AI output is missing the competitors array.');
+  if (!Array.isArray(raw['competitors'])) throw new Error('AI output is missing the competitors array.');
 
-  const competitors = raw.competitors.map(normalizeCompetitor).filter((item): item is Record<string, unknown> => Boolean(item));
+  const competitors = raw['competitors'].map(normalizeCompetitor).filter((item): item is Record<string, unknown> => Boolean(item));
   if (!competitors.length) throw new Error('AI output contains no valid competitor rows.');
 
   const normalized = {
     ...raw,
     competitors,
-    signals: objectArray(raw.signals),
-    priority_matrix: objectArray(raw.priority_matrix ?? raw.priorityMatrix),
-    priorityMatrix: objectArray(raw.priorityMatrix ?? raw.priority_matrix),
-    threats: objectArray(raw.threats),
-    opportunities: objectArray(raw.opportunities),
-    scenarios: objectArray(raw.scenarios),
-    action_plan: objectArray(raw.action_plan ?? raw.actions),
-    actions: objectArray(raw.actions ?? raw.action_plan),
-    trust: objectArray(raw.trust),
-    unknowns: Array.isArray(raw.unknowns) ? raw.unknowns.filter((x): x is string => typeof x === 'string' && x.trim()).map((x) => x.trim()).slice(0, 40) : [],
-    beforeAfter: objectArray(raw.beforeAfter),
+    signals: objectArray(raw['signals']),
+    priority_matrix: objectArray(raw['priority_matrix'] ?? raw['priorityMatrix']),
+    priorityMatrix: objectArray(raw['priorityMatrix'] ?? raw['priority_matrix']),
+    threats: objectArray(raw['threats']),
+    opportunities: objectArray(raw['opportunities']),
+    scenarios: objectArray(raw['scenarios']),
+    action_plan: objectArray(raw['action_plan'] ?? raw['actions']),
+    actions: objectArray(raw['actions'] ?? raw['action_plan']),
+    trust: objectArray(raw['trust']),
+    unknowns: Array.isArray(raw['unknowns']) ? raw['unknowns'].filter((x): x is string => typeof x === 'string' && Boolean(x.trim())).map((x) => x.trim()).slice(0, 40) : [],
+    beforeAfter: objectArray(raw['beforeAfter']),
   };
 
   const parsed = analysisSchema.safeParse(normalized);
