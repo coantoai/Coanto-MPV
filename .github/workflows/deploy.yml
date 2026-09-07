@@ -82,8 +82,6 @@ jobs:
           [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
           [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
       - name: Run live discovery
-        id: live
-        continue-on-error: true
         run: bun scripts/live-smoke.ts 2>&1 | tee live-smoke.log
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
@@ -103,9 +101,6 @@ jobs:
         with:
           name: coanto-live-discovery
           path: live-smoke.log
-      - name: Enforce live discovery result
-        if: steps.live.outcome == 'failure'
-        run: exit 1
 
   ai-benchmark:
     runs-on: ubuntu-latest
