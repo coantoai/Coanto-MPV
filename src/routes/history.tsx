@@ -14,9 +14,47 @@ export const Route = createFileRoute("/history")({
   }),
 });
 
+type AnalysisView = HistoryItem & {
+  competitorCount: number;
+  signalCount: number;
+  evidenceCount: number;
+  nextAction: string;
+  summary: string;
+  threatLevel: string;
+  opportunityLevel: string;
+};
+
+function text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function toView(item: HistoryItem, json?: string): AnalysisView {
+  let result: Record<string, unknown> = {};
+  if (json) {
+    try {
+      const parsed: unknown = JSON.parse(json);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) result = parsed as Record<string, unknown>;
+    } catch { /* Keep the history row usable even if old JSON is malformed. */ }
+  }
+  return {
+    ...item,
+    competitorCount: count(result.competitor_count),
+    signalCount: count(result.signal_count),
+    evidenceCount: count(result.evidence_count),
+    nextAction: text(result.next_action),
+    summary: text(result.summary),
+    threatLevel: text(result.threat_level),
+    opportunityLevel: text(result.opportunity_level),
+  };
+}
+
 function HistoryPage() {
   const [items, setItems] = useState<HistoryItem[]>([]);
-  const [selected, setSelected] = useState<HistoryItem | null>(null);
+  const [selected, setSelected] = useState<AnalysisView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,10 +68,10 @@ function HistoryPage() {
   }, []);
 
   async function openAnalysis(item: HistoryItem) {
-    setSelected(item);
+    setError(null);
     try {
       const result = await getAnalysis({ data: { id: item.id } });
-      if (result) setSelected(result as HistoryItem);
+      setSelected(toView(item, result.json));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "تعذر فتح التحليل.");
     }
@@ -44,8 +82,8 @@ function HistoryPage() {
     <main className="mx-auto max-w-6xl space-y-5 px-5 py-8"><div><div className="flex items-center gap-2 text-[#25cdb8]"><History size={18}/><span className="text-xs font-black tracking-[2px]">DECISION MEMORY</span></div><h1 className="mt-3 text-3xl font-black">سجل القرارات والتحليلات</h1><p className="mt-2 text-sm text-slate-500">التحليلات المحفوظة لحسابك، مع الأدلة والنبضات التي قادت إلى القرار.</p></div>
       {error && <div className="rounded-2xl border border-red-400/20 bg-red-400/5 p-4 text-sm text-red-200">{error}</div>}
       {loading ? <div className="flex items-center justify-center rounded-3xl border border-white/10 bg-[#0b121b] p-12 text-slate-400"><Loader2 className="ml-2 animate-spin" size={18}/> جاري تحميل الذاكرة…</div> : items.length === 0 ? <div className="rounded-3xl border border-white/10 bg-[#0b121b] p-10 text-center"><p className="font-bold">لا توجد تحليلات محفوظة بعد.</p><a href="/" className="mt-4 inline-flex rounded-xl bg-[#25cdb8] px-5 py-3 text-xs font-black text-[#04110e]">ابدأ أول تحليل</a></div> : <div className="grid gap-4 md:grid-cols-[1fr_1.4fr]">
-        <div className="space-y-3">{items.map(item => <button key={item.id} onClick={() => openAnalysis(item)} className={`w-full rounded-2xl border p-4 text-right transition ${selected?.id === item.id ? "border-[#25cdb8]/40 bg-[#25cdb8]/5" : "border-white/10 bg-[#0b121b] hover:border-white/20"}`}><div className="flex items-start justify-between gap-3"><div><b className="text-sm">{item.store_url}</b><div className="mt-2 flex items-center gap-2 text-[10px] text-slate-600"><Clock3 size={12}/>{new Date(item.created_at).toLocaleString("ar")}</div></div><Eye size={16} className="text-slate-500"/></div><div className="mt-3 flex gap-2 text-[10px] text-slate-500"><span>Competitors: {item.competitor_count}</span><span>Signals: {item.signal_count}</span><span>Evidence: {item.evidence_count}</span></div></button>)}</div>
-        <section className="rounded-3xl border border-white/10 bg-[#0b121b] p-6">{selected ? <><div className="flex items-center gap-2 text-sm font-black text-[#25cdb8]"><ShieldCheck size={17}/> Decision Pulse</div><h2 className="mt-5 text-xl font-black">{selected.next_action || "التحليل محفوظ"}</h2><p className="mt-3 text-sm leading-7 text-slate-400">{selected.summary || "تم حفظ التحليل مع بيانات الأدلة المتاحة وقت التنفيذ."}</p><div className="mt-6 grid gap-3 sm:grid-cols-3"><Metric label="التهديد" value={selected.threat_level || "—"}/><Metric label="الفرصة" value={selected.opportunity_level || "—"}/><Metric label="الأدلة" value={String(selected.evidence_count ?? 0)}/></div><a href="/" className="mt-6 inline-flex items-center gap-2 text-xs font-black text-[#25cdb8]">تحليل جديد <ArrowUpLeft size={14}/></a></> : <div className="grid min-h-64 place-items-center text-center text-slate-500"><History size={28}/><p>اختر تحليلاً لعرض ذاكرة القرار.</p></div>}</section>
+        <div className="space-y-3">{items.map(item => <button key={item.id} onClick={() => openAnalysis(item)} className={`w-full rounded-2xl border p-4 text-right transition ${selected?.id === item.id ? "border-[#25cdb8]/40 bg-[#25cdb8]/5" : "border-white/10 bg-[#0b121b] hover:border-white/20"}`}><div className="flex items-start justify-between gap-3"><div><b className="text-sm">{item.storeUrl}</b><div className="mt-2 flex items-center gap-2 text-[10px] text-slate-600"><Clock3 size={12}/>{new Date(item.createdAt).toLocaleString("ar")}</div></div><Eye size={16} className="text-slate-500"/></div>{selected?.id === item.id && <div className="mt-3 flex gap-2 text-[10px] text-slate-500"><span>Competitors: {selected.competitorCount}</span><span>Signals: {selected.signalCount}</span><span>Evidence: {selected.evidenceCount}</span></div>}</button>)}</div>
+        <section className="rounded-3xl border border-white/10 bg-[#0b121b] p-6">{selected ? <><div className="flex items-center gap-2 text-sm font-black text-[#25cdb8]"><ShieldCheck size={17}/> Decision Pulse</div><h2 className="mt-5 text-xl font-black">{selected.nextAction || "التحليل محفوظ"}</h2><p className="mt-3 text-sm leading-7 text-slate-400">{selected.summary || "تم حفظ التحليل مع بيانات الأدلة المتاحة وقت التنفيذ."}</p><div className="mt-6 grid gap-3 sm:grid-cols-3"><Metric label="التهديد" value={selected.threatLevel || "—"}/><Metric label="الفرصة" value={selected.opportunityLevel || "—"}/><Metric label="الأدلة" value={String(selected.evidenceCount)}/></div><a href="/" className="mt-6 inline-flex items-center gap-2 text-xs font-black text-[#25cdb8]">تحليل جديد <ArrowUpLeft size={14}/></a></> : <div className="grid min-h-64 place-items-center text-center text-slate-500"><History size={28}/><p>اختر تحليلاً لعرض ذاكرة القرار.</p></div>}</section>
       </div>}</main>
   </div>;
 }
