@@ -1,4 +1,56 @@
-import{createServerFn}from"@tanstack/react-start";import{requireSupabaseAuth}from"@/integrations/supabase/auth-middleware";
-export type HistoryItem={id:string;storeUrl:string;createdAt:string;store_url?:string;created_at?:string;competitor_count?:number;signal_count?:number;evidence_count?:number;next_action?:string;summary?:string;threat_level?:string;opportunity_level?:string;metadata?:Record<string,unknown>;[key:string]:unknown};
-export const listAnalyses=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).handler(async({context})=>{const{data,error}=await context.supabase.from("analyses").select("id,store_url,created_at").eq("user_id",context.userId).order("created_at",{ascending:false}).limit(20);if(error)throw new Error(error.message);return(data??[]).map(r=>({id:r.id,storeUrl:r.store_url,createdAt:r.created_at,store_url:r.store_url,created_at:r.created_at}))});
-export const getAnalysis=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).inputValidator((input:{id:string})=>input).handler(async({data,context})=>{const{data:r,error}=await context.supabase.from("analyses").select("id,store_url,created_at,result_json").eq("id",data.id).eq("user_id",context.userId).maybeSingle();if(error)throw new Error(error.message);if(!r)throw new Error("التحليل غير موجود");const result=typeof r.result_json==="object"&&r.result_json!==null?{...(r.result_json as Record<string,unknown>)}:{};return{id:r.id,storeUrl:r.store_url,createdAt:r.created_at,store_url:r.store_url,created_at:r.created_at,...result} as HistoryItem});
+import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+export type HistoryItem = {
+  id: string;
+  storeUrl: string;
+  createdAt: string;
+};
+
+export type AnalysisPayload = {
+  id: string;
+  storeUrl: string;
+  createdAt: string;
+  json: string;
+};
+
+export const listAnalyses = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }): Promise<HistoryItem[]> => {
+    const { data, error } = await context.supabase
+      .from("analyses")
+      .select("id, store_url, created_at")
+      .eq("user_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) throw new Error(error.message);
+
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      storeUrl: row.store_url,
+      createdAt: row.created_at,
+    }));
+  });
+
+export const getAnalysis = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: { id: string }) => input)
+  .handler(async ({ data, context }): Promise<AnalysisPayload> => {
+    const { data: row, error } = await context.supabase
+      .from("analyses")
+      .select("id, store_url, created_at, result_json")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("التحليل غير موجود");
+
+    return {
+      id: row.id,
+      storeUrl: row.store_url,
+      createdAt: row.created_at,
+      json: JSON.stringify(row.result_json),
+    };
+  });
