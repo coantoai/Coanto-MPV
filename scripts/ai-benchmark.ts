@@ -21,7 +21,7 @@ const providerKeys: Record<Provider, string> = {
 };
 const models: Record<Provider, string> = {
   openai: process.env.OPENAI_MODEL || 'gpt-6-astra',
-  gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+  gemini: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
   openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto',
   anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5-1',
 };
