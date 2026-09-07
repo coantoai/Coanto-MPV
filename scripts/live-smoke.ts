@@ -2,15 +2,9 @@ import { discoverCompetitors, buildPrompt, getMainSnapshot, hostname } from "../
 import { runResearchAnalysis } from "../src/lib/ai-engine.server.ts";
 
 const targets = ["https://www.allbirds.com/", "https://www.adidas.com/qa/en", "https://www.noon.com/uae-en/"];
-const hasSearchProvider = Boolean(process.env.BRAVE_SEARCH_API_KEY || process.env.BING_SEARCH_V7_KEY);
 const hasAiProvider = Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
 
-if (!hasSearchProvider && !hasAiProvider) {
-  console.log("LIVE SMOKE GATED: configure a search provider and/or AI provider to execute external live validation.");
-  process.exit(0);
-}
-if (!hasSearchProvider) console.log("LIVE DISCOVERY GATED: no external search provider configured.");
-if (!hasAiProvider) console.log("LIVE AI GATED: no independent AI provider configured.");
+if (!hasAiProvider) console.log("LIVE AI GATED: no independent AI provider configured; discovery will still use the public fallback search path.");
 
 let failures = 0;
 for (const target of targets) {
@@ -18,11 +12,10 @@ for (const target of targets) {
   try {
     const main = await getMainSnapshot(target);
     console.log(`MAIN source=${main.sourceType} host=${hostname(main.url)} title=${main.title.slice(0, 120)}`);
-    if (!hasSearchProvider) continue;
     const competitors = await discoverCompetitors(main);
     console.log(`COMPETITORS=${competitors.length}`);
     for (const competitor of competitors.slice(0, 10)) console.log(`- ${hostname(competitor.url)} [${competitor.sourceType}] ${competitor.title.slice(0, 100)}`);
-    if (!competitors.length) throw new Error("Live discovery returned zero competitors with a configured search provider");
+    if (!competitors.length) throw new Error("Live discovery returned zero competitors");
     if (hasAiProvider) {
       const ai = await runResearchAnalysis(buildPrompt(main, competitors));
       console.log(`AI provider=${ai.provider} model=${ai.model} webSources=${ai.sources.length} outputChars=${ai.text.length}`);
@@ -33,4 +26,4 @@ for (const target of targets) {
     console.error(`FAIL ${target}:`, error instanceof Error ? error.message : error);
   }
 }
-if (failures > 0 && (hasSearchProvider || hasAiProvider)) process.exitCode = 1;
+if (failures > 0) process.exitCode = 1;
