@@ -26,8 +26,11 @@ async function duckSearch(query: string): Promise<SearchHit[]> { try { const res
 async function providerSearch(query: string): Promise<SearchHit[]> { const brave = process.env['BRAVE_SEARCH_API_KEY']; if (brave) { try { const response = await fetchWithTimeout(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=12`, 10000, { Accept: 'application/json', 'X-Subscription-Token': brave }); if (response.ok) { const data = (await response.json()) as { web?: { results?: Array<{ url?: string; title?: string; description?: string }> } }; const hits = (data.web?.results ?? []).map((x) => ({ url: x.url ?? '', title: x.title ?? '', snippet: x.description ?? '', source: 'brave' as const })).filter((x) => x.url); if (hits.length) return uniqueHits(hits).slice(0, 12); } } catch {} } const bing = process.env['BING_SEARCH_V7_KEY']; if (bing) { try { const response = await fetchWithTimeout(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=12&textDecorations=false&textFormat=Raw`, 10000, { Accept: 'application/json', 'Ocp-Apim-Subscription-Key': bing }); if (response.ok) { const data = (await response.json()) as { webPages?: { value?: Array<{ url?: string; name?: string; snippet?: string }> } }; const hits = (data.webPages?.value ?? []).map((x) => ({ url: x.url ?? '', title: x.name ?? '', snippet: x.snippet ?? '', source: 'bing' as const })).filter((x) => x.url); if (hits.length) return uniqueHits(hits).slice(0, 12); } } catch {} } return duckSearch(query); }
 
 const blockedHosts = ['facebook.com','instagram.com','youtube.com','linkedin.com','x.com','twitter.com','pinterest.com','reddit.com','wikipedia.org','google.com','bing.com','duckduckgo.com','tiktok.com','marketbeat.com','investing.com','benzinga.com','stockanalysis.com','sec.gov','finance.yahoo.com','crunchbase.com','zoominfo.com'];
+const editorialHostHints = ['bstrategyhub.com','distillintelligence.com','theshoeguider.com','fashionbeans.com','apartstyle.com','ecothes.com','theatlasheart.com','wetried.it','statista.com','seoaves.com','brandswitch.co','goodonyou.eco','makersrow.com','athleticbrands.org','latterly.org','similarsitesearch.com','ratingfacts.com','uaeexperthub.com','ahrefstop.com','saasworthy.com','sitesimilar.net','globalmediainsight.com','rocketreach.co','g2.com'];
 function blocked(host: string) { return blockedHosts.some((x) => host === x || host.endsWith(`.${x}`)); }
-function candidateDomains(hits: SearchHit[], own: string, explicit: string[]) { const seen = new Set<string>(); const out: string[] = []; const source = [...explicit.map((url) => ({ url, title: '', snippet: '', source: 'directory' as const })), ...hits]; for (const hit of source) { const h = hostname(hit.url); if (!h || h === own || h.endsWith(`.${own}`) || blocked(h) || seen.has(h)) continue; seen.add(h); out.push(`https://${h}`); if (out.length >= 30) break; } return out; }
+function editorialHost(host: string) { return editorialHostHints.some((x) => host === x || host.endsWith(`.${x}`)); }
+function pathLooksEditorial(url: string) { try { const path = new URL(normalizeUrl(url)).pathname.toLowerCase(); return /\/(blog|news|article|articles|insights|guides|guide|reviews?|resources|research|reports?|top-|best-|alternatives?|competitors?)(\/|$)/i.test(path); } catch { return false; } }
+function candidateDomains(hits: SearchHit[], own: string, explicit: string[]) { const seen = new Set<string>(); const out: string[] = []; const source = [...explicit.map((url) => ({ url, title: '', snippet: '', source: 'directory' as const })), ...hits]; for (const hit of source) { const h = hostname(hit.url); if (!h || h === own || h.endsWith(`.${own}`) || blocked(h) || seen.has(h)) continue; if (editorialHost(h) && hit.source !== 'directory') continue; if (pathLooksEditorial(hit.url) && hit.source !== 'directory') continue; seen.add(h); out.push(`https://${h}`); if (out.length >= 40) break; } return out; }
 function brandCandidates(main: SiteSnapshot) { const values = [main.title, ...main.h1, ...main.h2, main.description].map((x) => x.replace(/\b(home|homepage|welcome|official|online|international|global|shop now|shop online)\b/gi, ' ').replace(/[|•·–—:-]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean); return values.filter((x) => x.split(/\s+/).length <= 10).slice(0, 6); }
 function likelyBrand(main: SiteSnapshot) { return hostname(main.url).split('.')[0]?.replace(/[-_]+/g, ' ') || brandCandidates(main)[0] || 'business'; }
 function searchSnapshot(hit: SearchHit): SiteSnapshot { return { url: normalizeUrl(hit.url), title: hit.title, description: hit.snippet, h1: [], h2: [], text: `Indexed public search evidence: ${hit.title}. ${hit.snippet}`.slice(0, 12000), sourceType: 'search-index', evidence: [`${hit.source === 'directory' ? 'Competitor directory' : 'Search index'} (${hit.source}): ${hit.title}${hit.snippet ? ` — ${hit.snippet}` : ''}`] }; }
@@ -35,9 +38,62 @@ function searchSnapshot(hit: SearchHit): SiteSnapshot { return { url: normalizeU
 export async function searchEvidenceForUrl(url: string): Promise<SiteSnapshot | null> { const h = hostname(url); if (!h) return null; const hits = await providerSearch(`site:${h}`); const exact = hits.find((hit) => hostname(hit.url) === h); return exact ? searchSnapshot(exact) : null; }
 export async function getMainSnapshot(storeUrl: string) { try { return await fetchSite(storeUrl); } catch { const fallback = await searchEvidenceForUrl(storeUrl); if (fallback) return fallback; throw new Error('تعذّر الوصول إلى الموقع ولم نجد أدلة عامة مفهرسة كافية عنه.'); } }
 
-async function directoryCompetitorHits(brand: string): Promise<SearchHit[]> { const { discoverDirectoryNames } = await import('./competitor-directories.server'); const directory = await discoverDirectoryNames(brand); const hits: SearchHit[] = []; for (const item of directory.slice(0, 8)) { const results = await providerSearch(`"${item.name}" official website`); const best = results.find((hit) => { const h = hostname(hit.url); return h && !blocked(h); }); if (best) hits.push({ ...best, source: 'directory', title: best.title || item.name, snippet: `Competitor directory (${item.source}) identified ${item.name} as a comparable company. ${best.snippet}` }); } return uniqueHits(hits); }
+async function directoryCompetitorHits(brand: string): Promise<SearchHit[]> { const { discoverDirectoryNames } = await import('./competitor-directories.server'); const directory = await discoverDirectoryNames(brand); const hits: SearchHit[] = []; for (const item of directory.slice(0, 8)) { const results = await providerSearch(`"${item.name}" official website`); const best = results.find((hit) => { const h = hostname(hit.url); return h && !blocked(h) && !editorialHost(h) && !pathLooksEditorial(hit.url); }); if (best) hits.push({ ...best, source: 'directory', title: best.title || item.name, snippet: `Competitor directory (${item.source}) identified ${item.name} as a comparable company. ${best.snippet}` }); } return uniqueHits(hits); }
 
-export async function discoverCompetitors(main: SiteSnapshot, explicit: string[] = []) { const own = hostname(main.url); const brand = likelyBrand(main); const ids = brandCandidates(main); const queries = [`"${brand}" competitors`,`"${brand}" alternatives`,`"${brand}" vs competitors`,`${brand} competitors alternatives`,`${ids[0] ?? brand} similar companies`,`${brand} market competitors`]; const [groups, directoryHits] = await Promise.all([Promise.all(queries.map(providerSearch)), directoryCompetitorHits(brand)]); const hits = uniqueHits([...groups.flat(), ...directoryHits]); const candidates = candidateDomains(hits, own, explicit); const evidenceByHost = new Map<string, SearchHit>(); for (const hit of hits) { const h = hostname(hit.url); if (!evidenceByHost.has(h) || hit.source === 'directory') evidenceByHost.set(h, hit); } const frequency = new Map<string, number>(); for (const hit of hits) { const h = hostname(hit.url); if (h) frequency.set(h, (frequency.get(h) ?? 0) + 1); } const explicitHosts = new Set(explicit.map(hostname).filter(Boolean)); const relevance = /competitor|alternative|similar|rival|footwear|apparel|retail|ecommerce|sport|fashion|shopping|marketplace/i; const qualified = candidates.filter((candidate) => { const h = hostname(candidate); const hit = evidenceByHost.get(h); return explicitHosts.has(h) || (frequency.get(h) ?? 0) >= 2 || Boolean(hit && relevance.test(`${hit.title} ${hit.snippet}`)); }).slice(0, 20); const sites: SiteSnapshot[] = []; for (const candidate of qualified) { const h = hostname(candidate); try { sites.push(await fetchSite(candidate)); } catch { const hit = evidenceByHost.get(h) ?? hits.find((x) => hostname(x.url) === h); if (hit) sites.push(searchSnapshot(hit)); } } const ranked = sites.map((site) => { const hit = evidenceByHost.get(hostname(site.url)); const text = `${hit?.title ?? ''} ${hit?.snippet ?? ''}`.toLowerCase(); const directoryBonus = hit?.source === 'directory' ? 8 : 0; const frequencyBonus = Math.min(frequency.get(hostname(site.url)) ?? 0, 4); const directBonus = site.sourceType === 'direct-site' ? 3 : 0; const relevanceBonus = ['competitor','alternative','similar','rival','footwear','apparel','retail','ecommerce','sport','fashion','shopping','marketplace'].reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0); const noisePenalty = /market|stock|financial|investor|news|analysis|research|funding|salary|employees/i.test(text) && !/shop|store|retail|ecommerce|product/i.test(text) ? 10 : 0; return { site, score: directoryBonus + frequencyBonus + directBonus + relevanceBonus - noisePenalty }; }).sort((a, b) => b.score - a.score).slice(0, 10); return ranked.map((item) => item.site); }
+function commercialSignals(site: SiteSnapshot) { const text = `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0, 5000)}`.toLowerCase(); return ['shop','store','buy','products','product','shoes','footwear','apparel','clothing','fashion','sportswear','electronics','mobile','grocery','marketplace','retail','ecommerce','delivery','beauty','cosmetics'].reduce((n, word) => n + (text.includes(word) ? 1 : 0), 0); }
+function editorialContent(site: SiteSnapshot) { const text = `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')}`.toLowerCase(); return /\b(news|analysis|research|strategy|strategies|guide|review|reviews|alternatives|competitors|comparison|stock|investing|financial|salary|employees|funding|ratings|rating|similar sites)\b/i.test(text); }
+
+export async function discoverCompetitors(main: SiteSnapshot, explicit: string[] = []) {
+  const own = hostname(main.url);
+  const brand = likelyBrand(main);
+  const ids = brandCandidates(main);
+  const queries = [`"${brand}" competitors`, `"${brand}" alternatives`, `"${brand}" vs competitors`, `${brand} competitors alternatives`, `${ids[0] ?? brand} similar companies`, `${brand} market competitors`];
+  const [groups, directoryHits] = await Promise.all([Promise.all(queries.map(providerSearch)), directoryCompetitorHits(brand)]);
+  const queryGroups = groups.map((group) => uniqueHits(group));
+  const hits = uniqueHits([...queryGroups.flat(), ...directoryHits]);
+  const candidates = candidateDomains(hits, own, explicit);
+  const evidenceByHost = new Map<string, SearchHit>();
+  for (const hit of hits) { const h = hostname(hit.url); if (!evidenceByHost.has(h) || hit.source === 'directory') evidenceByHost.set(h, hit); }
+  const queryPresence = new Map<string, number>();
+  for (const group of queryGroups) { for (const hit of group) { const h = hostname(hit.url); if (h) queryPresence.set(h, (queryPresence.get(h) ?? 0) + 1); } }
+  const explicitHosts = new Set(explicit.map(hostname).filter(Boolean));
+  const relevance = /competitor|alternative|similar|rival|footwear|apparel|retail|ecommerce|sport|fashion|shopping|marketplace/i;
+  const qualified = candidates.filter((candidate) => {
+    const h = hostname(candidate);
+    const hit = evidenceByHost.get(h);
+    return explicitHosts.has(h) || (queryPresence.get(h) ?? 0) >= 2 || Boolean(hit && relevance.test(`${hit.title} ${hit.snippet}`));
+  }).slice(0, 24);
+  const sites: SiteSnapshot[] = [];
+  for (const candidate of qualified) {
+    const h = hostname(candidate);
+    try {
+      const site = await fetchSite(candidate);
+      const hit = evidenceByHost.get(h);
+      const isExplicit = explicitHosts.has(h);
+      const commercial = commercialSignals(site);
+      const editorial = editorialContent(site) || editorialHost(h);
+      if (!isExplicit && (editorial && commercial < 3 || commercial < 2)) continue;
+      sites.push(site);
+    } catch {
+      const hit = evidenceByHost.get(h) ?? hits.find((x) => hostname(x.url) === h);
+      if (hit && (explicitHosts.has(h) || (queryPresence.get(h) ?? 0) >= 2) && !pathLooksEditorial(hit.url)) sites.push(searchSnapshot(hit));
+    }
+  }
+  const ranked = sites.map((site) => {
+    const h = hostname(site.url);
+    const hit = evidenceByHost.get(h);
+    const text = `${hit?.title ?? ''} ${hit?.snippet ?? ''}`.toLowerCase();
+    const queryBonus = Math.min(queryPresence.get(h) ?? 0, 5) * 4;
+    const directoryBonus = hit?.source === 'directory' ? 6 : 0;
+    const directBonus = site.sourceType === 'direct-site' ? 4 : 0;
+    const commercialBonus = Math.min(commercialSignals(site), 6);
+    const relevanceBonus = ['competitor','alternative','similar','rival','footwear','apparel','retail','ecommerce','sport','fashion','shopping','marketplace'].reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0);
+    const editorialPenalty = editorialContent(site) || editorialHost(h) ? 12 : 0;
+    const noisePenalty = /stock|financial|investor|news|analysis|research|funding|salary|employees|ratings/i.test(text) && !/shop|store|retail|ecommerce|product/i.test(text) ? 12 : 0;
+    return { site, score: queryBonus + directoryBonus + directBonus + commercialBonus + relevanceBonus - editorialPenalty - noisePenalty };
+  }).sort((a, b) => b.score - a.score).slice(0, 10);
+  return ranked.map((item) => item.site);
+}
 
 export function buildPrompt(main: SiteSnapshot, competitors: SiteSnapshot[]) { return ['COANTO competitive decision intelligence.', `Target evidence: ${JSON.stringify(main)}`, `Candidate evidence: ${JSON.stringify(competitors)}`, 'Analyze only from supplied evidence plus your web research.', 'Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.', 'Each competitor must include name, url, why, evidence, sourceUrls.', 'Never invent prices, revenue, market share, percentages, dates, or financial impact.', 'Clearly distinguish facts, inference, recommendation, and unknown.'].join('\n'); }
 export function parseJsonBlock(text: string) { const start = text.indexOf('{'); const end = text.lastIndexOf('}'); if (start < 0 || end <= start) throw new Error('AI returned no JSON object.'); return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>; }
