@@ -72,6 +72,15 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
+      - name: Verify AI provider secret wiring without exposing secrets
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
+        run: |
+          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
+          [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
       - name: Run live discovery
         id: live
         continue-on-error: true
@@ -106,6 +115,11 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
+      - name: Verify OpenRouter secret wiring without exposing the value
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY }}
+        run: |
+          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
       - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
