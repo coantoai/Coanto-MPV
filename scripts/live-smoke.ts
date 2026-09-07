@@ -1,5 +1,6 @@
 import { discoverCompetitors, buildPrompt, getMainSnapshot, hostname } from "../src/lib/analyze.server.ts";
 import { runResearchAnalysis } from "../src/lib/ai-engine.server.ts";
+import { filterCommercialCompetitors } from "../src/lib/competitor-filter.server.ts";
 
 const targets = ["https://www.allbirds.com/", "https://www.adidas.com/qa/en", "https://www.noon.com/uae-en/"];
 const hasAiProvider = Boolean(
@@ -17,10 +18,11 @@ for (const target of targets) {
   try {
     const main = await getMainSnapshot(target);
     console.log(`MAIN source=${main.sourceType} host=${hostname(main.url)} title=${main.title.slice(0, 120)}`);
-    const competitors = await discoverCompetitors(main);
-    console.log(`COMPETITORS=${competitors.length}`);
+    const discovered = await discoverCompetitors(main);
+    const competitors = filterCommercialCompetitors(main, discovered);
+    console.log(`DISCOVERED=${discovered.length} COMMERCIAL=${competitors.length}`);
     for (const competitor of competitors.slice(0, 10)) console.log(`- ${hostname(competitor.url)} [${competitor.sourceType}] ${competitor.title.slice(0, 100)}`);
-    if (!competitors.length) throw new Error("Live discovery returned zero competitors");
+    if (!competitors.length) throw new Error("Live discovery returned zero commercial competitors");
     if (hasAiProvider) {
       const ai = await runResearchAnalysis(buildPrompt(main, competitors));
       console.log(`AI provider=${ai.provider} model=${ai.model} webSources=${ai.sources.length} outputChars=${ai.text.length}`);
