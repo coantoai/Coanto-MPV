@@ -17,6 +17,7 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'off',
       'react-refresh/only-export-components': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^hit$' }],
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
