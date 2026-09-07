@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, validateTargetUrl, type AnalyzeInput } from "@/lib/analyze.server";
 import { runResearchAnalysis } from "@/lib/ai-engine.server";
+import { validateAiOutput } from "@/lib/ai-output.server";
 import { enforceEvidence } from "@/lib/trust.server";
 import { filterCommercialCompetitors } from "@/lib/competitor-filter.server";
 
@@ -65,7 +66,15 @@ export const Route = createFileRoute("/api/analyze")({
             return json({ error: "تعذّر تشغيل محرك التحليل حاليًا." }, 502);
           }
 
-          const analysis = enforceEvidence(parseJsonBlock(ai.text), main, commercialCompetitors);
+          let parsedAi: Record<string, unknown>;
+          try {
+            parsedAi = validateAiOutput(parseJsonBlock(ai.text));
+          } catch (error) {
+            console.error("AI output contract failed", error);
+            return json({ error: "محرك التحليل أعاد نتيجة غير مكتملة. لم يتم عرض نتيجة غير موثوقة." }, 502);
+          }
+
+          const analysis = enforceEvidence(parsedAi, main, commercialCompetitors);
           const sources = [main, ...commercialCompetitors];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
