@@ -54,6 +54,11 @@ jobs:
         run: |
           test -s /tmp/coanto.html
           grep -Eqi "COANTO|competitive|decision" /tmp/coanto.html
+      - name: Validate health endpoint
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/health > /tmp/coanto-health.json
+          grep -Eq '"ok":true' /tmp/coanto-health.json
+          grep -Eq '"service":"coanto"' /tmp/coanto-health.json
       - name: Stop production server
         if: always()
         run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
