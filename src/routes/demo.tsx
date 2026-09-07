@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUpLeft, CheckCircle2, Eye, ShieldCheck, Sparkles, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Eye, ShieldCheck, Sparkles, Target, TrendingUp, AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 
 export const Route = createFileRoute("/demo")({
