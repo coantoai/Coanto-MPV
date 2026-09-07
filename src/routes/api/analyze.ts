@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { discoverCompetitors, buildPrompt, getMainSnapshot, normalizeUrl, parseJsonBlock, validateTargetUrl, type AnalyzeInput } from "@/lib/analyze.server";
 import { runResearchAnalysis } from "@/lib/ai-engine.server";
 import { enforceEvidence } from "@/lib/trust.server";
+import { filterCommercialCompetitors } from "@/lib/competitor-filter.server";
 
 const MAX_REQUEST_BYTES = 64_000;
 
@@ -53,18 +54,19 @@ export const Route = createFileRoute("/api/analyze")({
           }
 
           const discovered = await discoverCompetitors(main, competitors);
-          if (!discovered.length) return json({ error: "لم نجد منافسين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج." }, 422);
+          const commercialCompetitors = filterCommercialCompetitors(main, discovered, competitors);
+          if (!commercialCompetitors.length) return json({ error: "لم نجد منافسين تجاريين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج." }, 422);
 
           let ai;
           try {
-            ai = await runResearchAnalysis(buildPrompt(main, discovered));
+            ai = await runResearchAnalysis(buildPrompt(main, commercialCompetitors));
           } catch (error) {
             console.error("AI analysis failed", error);
             return json({ error: "تعذّر تشغيل محرك التحليل حاليًا." }, 502);
           }
 
-          const analysis = enforceEvidence(parseJsonBlock(ai.text), main, discovered);
-          const sources = [main, ...discovered];
+          const analysis = enforceEvidence(parseJsonBlock(ai.text), main, commercialCompetitors);
+          const sources = [main, ...commercialCompetitors];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
           const metadata = (analysis['metadata'] && typeof analysis['metadata'] === 'object'
@@ -80,6 +82,8 @@ export const Route = createFileRoute("/api/analyze")({
             sourceCount: sources.length,
             directEvidenceSources: directCount,
             indexedEvidenceSources: indexedCount,
+            discoveredCompetitors: discovered.length,
+            commercialCompetitors: commercialCompetitors.length,
             freshness: "الآن",
             caveat: indexedCount
               ? "بعض الأدلة جاءت من فهارس بحث عامة لأن بعض المواقع تمنع الوصول الآلي. لم يتم تجاوز أي حماية؛ الأدلة المفهرسة مميزة عن الزيارة المباشرة."
