@@ -74,7 +74,7 @@ export const Route = createFileRoute("/api/analyze")({
             return json({ error: "محرك التحليل أعاد نتيجة غير مكتملة. لم يتم عرض نتيجة غير موثوقة." }, 502);
           }
 
-          const analysis = enforceEvidence(parsedAi, main, commercialCompetitors);
+          const analysis = enforceEvidence(parsedAi, main, commercialCompetitors, ai.sources);
           const sources = [main, ...commercialCompetitors];
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
