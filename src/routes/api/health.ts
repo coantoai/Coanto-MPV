@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
+// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute("/api/health")({
   server: {
     handlers: {
