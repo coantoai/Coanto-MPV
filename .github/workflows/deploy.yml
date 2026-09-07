@@ -81,7 +81,19 @@ jobs:
           [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
           [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
           [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
+      - name: Inspect accessible Actions secret names (names only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh secret list --repo "${GITHUB_REPOSITORY}" --app actions > actions-secrets.txt 2>&1; then
+            echo "Actions secret listing succeeded. Names only:" 
+            cat actions-secrets.txt | sed -E 's/[[:space:]]+[0-9]+.*$//' | sort -u
+          else
+            echo "Actions secret listing is not permitted for GITHUB_TOKEN; runtime wiring check remains authoritative."
+            cat actions-secrets.txt || true
+          fi
       - name: Run live discovery
+        id: live
         run: bun scripts/live-smoke.ts 2>&1 | tee live-smoke.log
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
@@ -100,7 +112,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coanto-live-discovery
-          path: live-smoke.log
+          path: |
+            live-smoke.log
+            actions-secrets.txt
+      - name: Enforce live discovery result
+        if: steps.live.outcome == 'failure'
+        run: exit 1
 
   ai-benchmark:
     runs-on: ubuntu-latest
