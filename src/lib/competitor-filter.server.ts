@@ -13,6 +13,7 @@ const obviousNonCompetitorHosts = [
   'yoursustainableguide.com',
   'markets.apistemic.com',
   'koalagains.com',
+  'ringly.io',
 ];
 
 const categoryGroups = [
