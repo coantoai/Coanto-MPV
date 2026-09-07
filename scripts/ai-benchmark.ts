@@ -20,10 +20,10 @@ const providerKeys: Record<Provider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
 };
 const models: Record<Provider, string> = {
-  openai: process.env.OPENAI_MODEL || 'gpt-6-astra',
-  gemini: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna',
+  gemini: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto',
-  anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5-1',
+  anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5',
 };
 
 const benchmarkCases = BENCHMARK_CASES.slice(0, 12);
@@ -76,7 +76,7 @@ async function callProvider(provider: Provider, prompt: string) {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models.gemini)}:generateContent?key=${encodeURIComponent(key)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { responseMimeType: 'application/json' } }),
     });
     if (!response.ok) throw new Error(`Gemini ${response.status}`);
     const data = await response.json();
@@ -179,7 +179,7 @@ const summary = providers.map((provider) => {
 const successfulCases = results.filter((result) => !result.error && result.raw.trim().length > 0).length;
 const report = {
   generatedAt: new Date().toISOString(),
-  benchmarkVersion: '2026-09-v5',
+  benchmarkVersion: '2026-09-v6',
   cases: benchmarkCases.length,
   status: successfulCases > 0 ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets',
   configuredProviders: configured,
