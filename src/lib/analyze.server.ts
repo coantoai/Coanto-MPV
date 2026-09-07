@@ -148,11 +148,17 @@ export async function discoverCompetitors(main: SiteSnapshot, explicit: string[]
   return ranked.map((item) => item.site);
 }
 
-export function buildPrompt(main: SiteSnapshot, competitors: SiteSnapshot[]) { return `COANTO competitive decision intelligence.\
-Target: ${JSON.stringify(main)}\
-Candidates: ${JSON.stringify(competitors)}\
-\
-Analyze only from supplied evidence plus your web research. Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level. Each competitor must include name, url, why, evidence, sourceUrls. Never invent prices, revenue, market share, percentages, dates, or financial impact. Clearly distinguish facts, inference, recommendation, and unknown.\
-`; }
+export function buildPrompt(main: SiteSnapshot, competitors: SiteSnapshot[]) {
+  return [
+    'COANTO competitive decision intelligence.',
+    `Target evidence: ${JSON.stringify(main)}`,
+    `Candidate evidence: ${JSON.stringify(competitors)}`,
+    'Analyze only from supplied evidence plus your web research.',
+    'Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.',
+    'Each competitor must include name, url, why, evidence, sourceUrls.',
+    'Never invent prices, revenue, market share, percentages, dates, or financial impact.',
+    'Clearly distinguish facts, inference, recommendation, and unknown.'
+  ].join('\n');
+}
 
 export function parseJsonBlock(text: string) { const start = text.indexOf('{'); const end = text.lastIndexOf('}'); if (start < 0 || end <= start) throw new Error('AI returned no JSON object.'); return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>; }
