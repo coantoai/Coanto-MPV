@@ -66,7 +66,7 @@ async function callProvider(provider: Provider, prompt: string) {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: models.openai, input: prompt, tools: [{ type: 'web_search_preview' }], include: ['web_search_call.action.sources'] }),
     });
-    if (!response.ok) throw new Error(`OpenAI ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new Error(`OpenAI ${response.status}`);
     const data = await response.json();
     return { text: extractText(data), sources: extractSources(data) };
   }
@@ -76,7 +76,7 @@ async function callProvider(provider: Provider, prompt: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }] }),
     });
-    if (!response.ok) throw new Error(`Gemini ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new Error(`Gemini ${response.status}`);
     const data = await response.json();
     return { text: extractText(data), sources: extractSources(data) };
   }
@@ -89,13 +89,9 @@ async function callProvider(provider: Provider, prompt: string) {
         'HTTP-Referer': process.env.COANTO_SITE_URL || 'https://coanto.com',
         'X-Title': 'COANTO AI Benchmark',
       },
-      body: JSON.stringify({
-        model: models.openrouter,
-        messages: [{ role: 'user', content: prompt }],
-        tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }],
-      }),
+      body: JSON.stringify({ model: models.openrouter, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }] }),
     });
-    if (!response.ok) throw new Error(`OpenRouter ${response.status}: ${await response.text()}`);
+    if (!response.ok) throw new Error(`OpenRouter ${response.status}`);
     const data = await response.json();
     return { text: extractText(data), sources: extractSources(data) };
   }
@@ -104,7 +100,7 @@ async function callProvider(provider: Provider, prompt: string) {
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
     body: JSON.stringify({ model: models.anthropic, max_tokens: 3000, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: 6 }] }),
   });
-  if (!response.ok) throw new Error(`Anthropic ${response.status}: ${await response.text()}`);
+  if (!response.ok) throw new Error(`Anthropic ${response.status}`);
   const data = await response.json();
   return { text: extractText(data), sources: extractSources(data) };
 }
@@ -117,10 +113,7 @@ function parseCompetitors(text: string): CompetitorResult[] {
     const parsed = JSON.parse(text.slice(start, end + 1));
     const values = parsed.competitors ?? parsed.competitor_domains ?? [];
     if (!Array.isArray(values)) return [];
-    return values
-      .map((value: any) => typeof value === 'string' ? { domain: value } : value)
-      .filter((value: any) => value && typeof value === 'object')
-      .slice(0, 5);
+    return values.map((value: any) => typeof value === 'string' ? { domain: value } : value).filter((value: any) => value && typeof value === 'object').slice(0, 5);
   } catch {
     return [];
   }
@@ -136,12 +129,7 @@ function score(found: CompetitorResult[], expected: string[]) {
   const hits = [...f].filter((item) => [...e].some((target) => item === target || item.endsWith(`.${target}`) || target.endsWith(`.${item}`))).length;
   const grounded = found.filter((item) => Array.isArray(item.sourceUrls) && item.sourceUrls.length > 0).length;
   const evidenced = found.filter((item) => typeof item.evidence === 'string' && item.evidence.trim().length > 0).length;
-  return {
-    hits,
-    precisionAt5: found.length ? hits / Math.min(found.length, 5) : 0,
-    recallAt5: hits / Math.max(e.size, 1),
-    evidenceCoverage: found.length ? (grounded + evidenced) / (2 * found.length) : 0,
-  };
+  return { hits, precisionAt5: found.length ? hits / Math.min(found.length, 5) : 0, recallAt5: hits / Math.max(e.size, 1), evidenceCoverage: found.length ? (grounded + evidenced) / (2 * found.length) : 0 };
 }
 
 const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
@@ -163,8 +151,9 @@ for (const provider of providers) {
       const s = score(competitors, test.expectedCompetitors);
       console.log(`${provider}\t${test.id}\thits=${s.hits}\tP@5=${s.precisionAt5.toFixed(2)}\tR@5=${s.recallAt5.toFixed(2)}\tevidence=${s.evidenceCoverage.toFixed(2)}\tlatency=${Date.now() - started}ms`);
     } catch (error) {
-      results.push({ provider, model: models[provider], caseId: test.id, competitors: [], sources: [], raw: '', latencyMs: Date.now() - started, error: error instanceof Error ? error.message : String(error) });
-      console.log(`${provider}\t${test.id}\tERROR\t${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({ provider, model: models[provider], caseId: test.id, competitors: [], sources: [], raw: '', latencyMs: Date.now() - started, error: message.slice(0, 240) });
+      console.log(`${provider}\t${test.id}\tERROR\t${message.slice(0, 240)}`);
     }
   }
 }
@@ -175,7 +164,7 @@ const summary = providers.map((provider) => {
   return {
     provider,
     model: models[provider],
-    status: process.env[providerKeys[provider]] ? 'tested' : 'blocked-missing-secret',
+    status: process.env[providerKeys[provider]] ? (rows.length ? 'tested' : 'failed') : 'blocked-missing-secret',
     cases: rows.length,
     failedCases: results.filter((r) => r.provider === provider && Boolean(r.error)).length,
     meanPrecisionAt5: scored.length ? scored.reduce((a, b) => a + b.precisionAt5, 0) / scored.length : null,
@@ -185,15 +174,18 @@ const summary = providers.map((provider) => {
   };
 });
 
+const successfulCases = results.filter((result) => !result.error && result.raw.trim().length > 0).length;
 const report = {
   generatedAt: new Date().toISOString(),
-  benchmarkVersion: '2026-09-v3',
+  benchmarkVersion: '2026-09-v4',
   cases: BENCHMARK_CASES.length,
-  status: configured.length ? 'tested' : 'blocked-missing-provider-secrets',
+  status: successfulCases > 0 ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets',
   configuredProviders: configured,
+  successfulCases,
   summary,
   results,
 };
 await Bun.write('ai-benchmark-report.json', JSON.stringify(report, null, 2));
 console.log('\n=== COANTO AI BENCHMARK ===');
 console.log(JSON.stringify(report, null, 2));
+if (configured.length > 0 && successfulCases === 0) process.exitCode = 1;
