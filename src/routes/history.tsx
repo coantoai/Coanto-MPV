@@ -42,13 +42,13 @@ function toView(item: HistoryItem, json?: string): AnalysisView {
   }
   return {
     ...item,
-    competitorCount: count(result.competitor_count),
-    signalCount: count(result.signal_count),
-    evidenceCount: count(result.evidence_count),
-    nextAction: text(result.next_action),
-    summary: text(result.summary),
-    threatLevel: text(result.threat_level),
-    opportunityLevel: text(result.opportunity_level),
+    competitorCount: count(result["competitor_count"]),
+    signalCount: count(result["signal_count"]),
+    evidenceCount: count(result["evidence_count"]),
+    nextAction: text(result["next_action"]),
+    summary: text(result["summary"]),
+    threatLevel: text(result["threat_level"]),
+    opportunityLevel: text(result["opportunity_level"]),
   };
 }
 
