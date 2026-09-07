@@ -87,6 +87,7 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      # Benchmark is intentionally triggered on main pushes so configured provider secrets are exercised.
       - run: bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
