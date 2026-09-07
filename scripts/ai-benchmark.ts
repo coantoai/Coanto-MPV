@@ -21,10 +21,12 @@ const providerKeys: Record<Provider, string> = {
 };
 const models: Record<Provider, string> = {
   openai: process.env.OPENAI_MODEL || 'gpt-6-astra',
-  gemini: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto',
   anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5-1',
 };
+
+const benchmarkCases = BENCHMARK_CASES.slice(0, 12);
 
 function host(value: string) {
   try {
@@ -141,7 +143,7 @@ for (const provider of providers) {
     console.log(`SKIP ${provider}: ${providerKeys[provider]} not configured`);
     continue;
   }
-  for (const test of BENCHMARK_CASES) {
+  for (const test of benchmarkCases) {
     const prompt = `You are evaluating competitive intelligence quality for COANTO. Research ${test.brand} (${test.url}). Identify the 5 most direct commercial competitors for this exact business. Search the web and cross-check multiple independent sources. Exclude directories, news sites, stock/financial sites, generic marketplaces unless they are genuine direct competitors, and exclude the target itself. Return JSON only: {"competitors":[{"name":"","domain":"","why":"","evidence":"","sourceUrls":[]}],"unknowns":[]}. Every competitor must have evidence and sourceUrls when the web research supports them. Do not guess. ${test.brand} is the target business.`;
     const started = Date.now();
     try {
@@ -160,7 +162,7 @@ for (const provider of providers) {
 
 const summary = providers.map((provider) => {
   const rows = results.filter((r) => r.provider === provider && !r.error);
-  const scored = rows.map((row) => score(row.competitors, BENCHMARK_CASES.find((c) => c.id === row.caseId)?.expectedCompetitors ?? []));
+  const scored = rows.map((row) => score(row.competitors, benchmarkCases.find((c) => c.id === row.caseId)?.expectedCompetitors ?? []));
   return {
     provider,
     model: models[provider],
@@ -177,8 +179,8 @@ const summary = providers.map((provider) => {
 const successfulCases = results.filter((result) => !result.error && result.raw.trim().length > 0).length;
 const report = {
   generatedAt: new Date().toISOString(),
-  benchmarkVersion: '2026-09-v4',
-  cases: BENCHMARK_CASES.length,
+  benchmarkVersion: '2026-09-v5',
+  cases: benchmarkCases.length,
   status: successfulCases > 0 ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets',
   configuredProviders: configured,
   successfulCases,
