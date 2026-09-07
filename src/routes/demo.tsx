@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Eye, ShieldCheck, Sparkles, Target, TrendingUp, AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 
+// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute("/demo")({
   component: DemoPage,
   head: () => ({
