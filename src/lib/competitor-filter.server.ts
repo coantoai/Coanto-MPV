@@ -14,6 +14,21 @@ const obviousNonCompetitorHosts = [
   'markets.apistemic.com',
 ];
 
+const categoryGroups = [
+  ['shoes', 'shoe', 'footwear', 'sneaker', 'sneakers', 'boots', 'sandals'],
+  ['apparel', 'clothing', 'fashion', 'activewear', 'sportswear', 'wear'],
+  ['beauty', 'cosmetics', 'skincare', 'makeup', 'fragrance'],
+  ['electronics', 'laptop', 'phone', 'mobile', 'computer', 'tech'],
+  ['grocery', 'groceries', 'supermarket', 'food', 'fresh'],
+  ['marketplace', 'ecommerce', 'e-commerce', 'retail', 'store', 'shopping'],
+  ['delivery', 'courier', 'logistics', 'shipping', 'delivery service'],
+  ['hotel', 'hotels', 'accommodation', 'lodging', 'travel'],
+  ['booking', 'reservation', 'reserve', 'tickets', 'flights'],
+  ['ride', 'rides', 'taxi', 'mobility', 'transport'],
+  ['music', 'streaming', 'podcast', 'audio'],
+  ['software', 'saas', 'platform', 'app', 'applications'],
+];
+
 const strongCommerceSignals = [
   /add\s+to\s+cart/i,
   /shopping\s+cart/i,
@@ -27,7 +42,7 @@ const strongCommerceSignals = [
   /place\s+an\s+order/i,
   /order\s+(now|online)/i,
   /delivery/i,
-  /\b(store|shop|marketplace|retail|ecommerce)\b/i,
+  /\b(store|shop|marketplace|retail|ecommerce|shopping)\b/i,
   /\b(price|pricing)\b/i,
   /\b(book|reserve)\b/i,
 ];
@@ -35,7 +50,7 @@ const strongCommerceSignals = [
 const editorialSignals = /\b(news|analysis|research|strategy|guide|review|reviews|alternatives|competitors|comparison|stock|investing|financial|salary|employees|funding|ratings?|similar\s+sites|market\s+data)\b/i;
 
 function textOf(site: SiteSnapshot) {
-  return `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0, 9000)}`;
+  return `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0, 9000)}`.toLowerCase();
 }
 
 function isObviousNonCompetitor(host: string) {
@@ -45,6 +60,12 @@ function isObviousNonCompetitor(host: string) {
 function commerceScore(site: SiteSnapshot) {
   const text = textOf(site);
   return strongCommerceSignals.reduce((score, signal) => score + (signal.test(text) ? 1 : 0), 0);
+}
+
+function categoryMatches(main: SiteSnapshot, candidate: SiteSnapshot) {
+  const mainText = textOf(main);
+  const candidateText = textOf(candidate);
+  return categoryGroups.filter((group) => group.some((term) => mainText.includes(term)) && group.some((term) => candidateText.includes(term))).length;
 }
 
 function editorialScore(site: SiteSnapshot) {
@@ -62,11 +83,17 @@ export function filterCommercialCompetitors(main: SiteSnapshot, candidates: Site
     if (isObviousNonCompetitor(host)) return false;
     const commerce = commerceScore(site);
     const editorial = editorialScore(site);
+    const categoryOverlap = categoryMatches(main, site);
     if (editorial && commerce < 4) return false;
-    return commerce >= 3;
+    if (commerce < 2) return false;
+    return categoryOverlap > 0;
   });
 
   return accepted
-    .sort((a, b) => commerceScore(b) - commerceScore(a))
+    .sort((a, b) => {
+      const scoreA = commerceScore(a) + categoryMatches(main, a) * 3 - editorialScore(a);
+      const scoreB = commerceScore(b) + categoryMatches(main, b) * 3 - editorialScore(b);
+      return scoreB - scoreA;
+    })
     .slice(0, 10);
 }
