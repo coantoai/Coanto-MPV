@@ -64,7 +64,6 @@ jobs:
         run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
 
   live-discovery:
-    if: ${{ vars.ENABLE_LIVE_DISCOVERY == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
