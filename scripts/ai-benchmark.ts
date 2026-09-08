@@ -4,7 +4,7 @@ type Provider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 type Row = { provider: Provider; model: string; caseId: string; competitors: any[]; sources: string[]; raw: string; latencyMs: number; error?: string };
 
 const keys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
-const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
+const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
 const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
 const cases = BENCHMARK_CASES.slice(0, 6);
 const rows: Row[] = [];
@@ -37,7 +37,7 @@ async function call(provider: Provider, prompt: string) {
   } else if (provider === 'gemini') {
     let lastError = '';
     for (let attempt = 0; attempt < 4; attempt++) {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models.gemini)}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { responseMimeType: 'application/json' } }) });
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models.gemini)}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json' } }) });
       if (response.ok) break;
       const body = await response.text();
       lastError = `gemini ${response.status}${body ? `: ${body.slice(0, 1200)}` : ''}`;
@@ -66,7 +66,7 @@ function score(found: any[], expected: string[]) { const foundDomains = new Set(
 for (const provider of providers) {
   if (!process.env[keys[provider]]) { console.log(`SKIP ${provider}: ${keys[provider]} not configured`); continue; }
   for (const test of cases) {
-    const prompt = `You are evaluating COANTO competitive intelligence. Research ${test.brand} (${test.url}). Identify the 5 most direct commercial competitors. Search the web and cross-check independent sources. Exclude directories, news, financial sites, generic marketplaces unless genuinely direct. Return JSON only: {"competitors":[{"name":"","domain":"","why":"","evidence":"","sourceUrls":[]}],"unknowns":[]}. Do not guess. Every competitor should have evidence and sourceUrls when available.`;
+    const prompt = `You are evaluating COANTO competitive intelligence. Research ${test.brand} (${test.url}) using your available knowledge. Identify the 5 most direct commercial competitors. Do not guess. Return JSON only: {"competitors":[{"name":"","domain":"","why":"","evidence":"","sourceUrls":[]}],"unknowns":[]}. Every competitor should have evidence and sourceUrls when genuinely available. If you cannot verify a source, leave sourceUrls empty and explain the limitation in unknowns.`;
     const started = Date.now();
     try {
       const output = await call(provider, prompt);
@@ -86,7 +86,7 @@ for (const provider of providers) {
 const configured = providers.filter((p) => Boolean(process.env[keys[p]]));
 const summary = providers.map((provider) => { const ok = rows.filter((x) => x.provider === provider && !x.error); const scored = ok.map((x) => score(x.competitors, cases.find((c) => c.id === x.caseId)?.expectedCompetitors || [])); return { provider, model: models[provider], status: process.env[keys[provider]] ? (ok.length ? 'tested' : 'failed') : 'blocked-missing-secret', cases: ok.length, failedCases: rows.filter((x) => x.provider === provider && x.error).length, meanPrecisionAt5: scored.length ? scored.reduce((a, b) => a + b.precision, 0) / scored.length : null, meanRecallAt5: scored.length ? scored.reduce((a, b) => a + b.recall, 0) / scored.length : null, meanEvidenceCoverage: scored.length ? scored.reduce((a, b) => a + b.evidence, 0) / scored.length : null, meanLatencyMs: ok.length ? ok.reduce((a, b) => a + b.latencyMs, 0) / ok.length : null }; });
 const successfulCases = rows.filter((x) => !x.error && x.raw.trim()).length;
-const report = { generatedAt: new Date().toISOString(), benchmarkVersion: '2026-09-v9', cases: cases.length, status: successfulCases ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets', configuredProviders: configured, successfulCases, summary, results: rows };
+const report = { generatedAt: new Date().toISOString(), benchmarkVersion: '2026-09-v10-free-flash-lite', cases: cases.length, status: successfulCases ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets', configuredProviders: configured, successfulCases, summary, results: rows };
 await Bun.write('ai-benchmark-report.json', JSON.stringify(report, null, 2));
 console.log('\n=== COANTO AI BENCHMARK ===');
 console.log(JSON.stringify(report, null, 2));
