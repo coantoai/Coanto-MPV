@@ -80,7 +80,7 @@ jobs:
       - run: bun install
       - name: Verify provider secret wiring without exposing secrets
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
@@ -92,7 +92,7 @@ jobs:
       - name: Run real AI end-to-end test
         env:
           COANTO_E2E_URL: https://www.allbirds.com/
-          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
@@ -114,7 +114,7 @@ jobs:
       - name: Verify AI provider secret wiring without exposing secrets
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
         run: |
           [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
@@ -141,7 +141,7 @@ jobs:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
@@ -182,7 +182,7 @@ jobs:
           set -o pipefail
           bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
