@@ -1,19 +1,18 @@
 CREATE TABLE IF NOT EXISTS public.memory_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  analysis_id uuid REFERENCES public.analyses(id) ON DELETE SET NULL,
+  source_analysis_id uuid REFERENCES public.analyses(id) ON DELETE SET NULL,
   kind text NOT NULL CHECK (kind IN ('decision','recommendation','insight','preference','note')),
   title text NOT NULL,
-  content text NOT NULL,
-  importance smallint NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  content jsonb NOT NULL DEFAULT '{}'::jsonb,
+  importance smallint NOT NULL DEFAULT 50 CHECK (importance BETWEEN 0 AND 100),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS memory_items_user_updated_idx ON public.memory_items(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS memory_items_user_kind_idx ON public.memory_items(user_id, kind);
-CREATE INDEX IF NOT EXISTS memory_items_analysis_idx ON public.memory_items(analysis_id);
+CREATE INDEX IF NOT EXISTS memory_items_source_analysis_idx ON public.memory_items(source_analysis_id);
 
 ALTER TABLE public.memory_items ENABLE ROW LEVEL SECURITY;
 
