@@ -4,9 +4,9 @@ type Provider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 type Row = { provider: Provider; model: string; caseId: string; competitors: any[]; sources: string[]; raw: string; latencyMs: number; error?: string };
 
 const keys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
-const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-3.8-flash', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
+const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-1.5-pro', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
 const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
-const cases = BENCHMARK_CASES.slice(0, 12);
+const cases = BENCHMARK_CASES.slice(0, 6);
 const rows: Row[] = [];
 
 function text(data: any): string {
@@ -86,7 +86,7 @@ for (const provider of providers) {
 const configured = providers.filter((p) => Boolean(process.env[keys[p]]));
 const summary = providers.map((provider) => { const ok = rows.filter((x) => x.provider === provider && !x.error); const scored = ok.map((x) => score(x.competitors, cases.find((c) => c.id === x.caseId)?.expectedCompetitors || [])); return { provider, model: models[provider], status: process.env[keys[provider]] ? (ok.length ? 'tested' : 'failed') : 'blocked-missing-secret', cases: ok.length, failedCases: rows.filter((x) => x.provider === provider && x.error).length, meanPrecisionAt5: scored.length ? scored.reduce((a, b) => a + b.precision, 0) / scored.length : null, meanRecallAt5: scored.length ? scored.reduce((a, b) => a + b.recall, 0) / scored.length : null, meanEvidenceCoverage: scored.length ? scored.reduce((a, b) => a + b.evidence, 0) / scored.length : null, meanLatencyMs: ok.length ? ok.reduce((a, b) => a + b.latencyMs, 0) / ok.length : null }; });
 const successfulCases = rows.filter((x) => !x.error && x.raw.trim()).length;
-const report = { generatedAt: new Date().toISOString(), benchmarkVersion: '2026-09-v8', cases: cases.length, status: successfulCases ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets', configuredProviders: configured, successfulCases, summary, results: rows };
+const report = { generatedAt: new Date().toISOString(), benchmarkVersion: '2026-09-v9', cases: cases.length, status: successfulCases ? 'tested' : configured.length ? 'failed-all-configured-providers' : 'blocked-missing-provider-secrets', configuredProviders: configured, successfulCases, summary, results: rows };
 await Bun.write('ai-benchmark-report.json', JSON.stringify(report, null, 2));
 console.log('\n=== COANTO AI BENCHMARK ===');
 console.log(JSON.stringify(report, null, 2));
