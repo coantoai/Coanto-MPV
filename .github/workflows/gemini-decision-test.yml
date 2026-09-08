@@ -8,6 +8,11 @@ on:
       - 'src/routes/decision.tsx'
       - 'src/lib/memory.functions.ts'
       - 'src/routes/memory.tsx'
+      - 'src/lib/monitoring.functions.ts'
+      - 'src/routes/monitoring.tsx'
+      - 'src/lib/business-intelligence.functions.ts'
+      - 'src/routes/business-intelligence.tsx'
+      - 'src/routeTree.gen.ts'
       - 'supabase/migrations/**'
       - 'src/lib/ai-engine.server.ts'
       - 'src/lib/ai-output.server.ts'
@@ -25,25 +30,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
           node-version: 24
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-
       - name: Install dependencies
         run: bun install
-
       - name: Typecheck
         run: npm run typecheck
-
       - name: Run Gemini-backed tests
         run: npm run test:ai
-
       - name: Build
         run: npm run build
