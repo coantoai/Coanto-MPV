@@ -1,0 +1,71 @@
+import { discoverCompetitors, fetchSite } from '../src/lib/analyze.server';
+import { runAiProvider, type AiProvider } from '../src/lib/ai-engine.server';
+import { validateAiOutput } from '../src/lib/ai-output.server';
+
+const providers: AiProvider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
+const keys: Record<AiProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+};
+
+const target = process.env.COANTO_E2E_URL?.trim() || 'https://www.allbirds.com/';
+
+function compact(value: unknown, max: number) {
+  return JSON.stringify(value).slice(0, max);
+}
+
+async function main() {
+  const main = await fetchSite(target);
+  const discovered = await discoverCompetitors(main);
+  if (!discovered.length) throw new Error('E2E discovery returned no competitors.');
+
+  const evidence = [
+    `Target: ${main.url}`,
+    `Title: ${main.title}`,
+    `Description: ${main.description}`,
+    `Observed evidence: ${main.evidence.join(' | ')}`,
+    `Discovered competitors: ${compact(discovered.slice(0, 8), 9000)}`,
+  ].join('\n');
+
+  const prompt = [
+    'You are COANTO running a real end-to-end competitive intelligence test.',
+    'Use ONLY the supplied evidence plus your web research. Return JSON only.',
+    'Every material competitor claim must have evidence and sourceUrls when available.',
+    'Do not invent revenue, market share, prices, percentages, dates, or financial impact.',
+    'Distinguish facts, inference, recommendation, and unknowns.',
+    'Return at least one valid competitor and include these fields: name, url, why, evidence, sourceUrls.',
+    'Also return: signals, scenarios, trust, unknowns, summary, next_action, threat_level, opportunity_level.',
+    '',
+    evidence,
+  ].join('\n');
+
+  const configured = providers.filter((provider) => Boolean(process.env[keys[provider]]));
+  if (!configured.length) throw new Error('No AI provider secret is configured for the live E2E test.');
+
+  let successful = 0;
+  for (const provider of configured) {
+    const started = Date.now();
+    try {
+      const run = await runAiProvider(provider, prompt);
+      const parsed = validateAiOutput(JSON.parse(run.text.slice(run.text.indexOf('{'), run.text.lastIndexOf('}') + 1)));
+      const competitors = Array.isArray(parsed.competitors) ? parsed.competitors : [];
+      if (!competitors.length) throw new Error('validated output contains no competitors');
+      const evidenced = competitors.filter((item) => {
+        const row = item as Record<string, unknown>;
+        return Boolean(String(row['evidence'] ?? '').trim()) && Array.isArray(row['sourceUrls']) && row['sourceUrls'].length > 0;
+      });
+      if (!evidenced.length) throw new Error('no competitor has both evidence and sourceUrls');
+      successful += 1;
+      console.log(`PASS ${provider} model=${run.model} competitors=${competitors.length} evidenced=${evidenced.length} latency=${Date.now() - started}ms sources=${run.sources.length}`);
+    } catch (error) {
+      console.error(`FAIL ${provider} latency=${Date.now() - started}ms error=${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
+  }
+
+  console.log(`AI LIVE E2E PASS: ${successful}/${configured.length} configured provider(s).`);
+}
+
+await main();
