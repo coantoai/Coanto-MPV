@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 15
     env:
       GEMINI_API_KEY: ${{ secrets.Gemini_coanto_one }}
-      GEMINI_MODEL: gemini-2.5-flash
+      GEMINI_MODEL: gemini-3.1-flash-lite
 
     steps:
       - name: Checkout
@@ -44,5 +44,7 @@ jobs:
         run: npm run typecheck
       - name: Run Gemini-backed tests
         run: npm run test:ai
+      - name: Run real public-site monitoring smoke
+        run: npm run test:monitoring-live
       - name: Build
         run: npm run build
