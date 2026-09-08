@@ -99,7 +99,8 @@ export function filterCommercialCompetitors(main: SiteSnapshot, candidates: Site
     const strongCategoryOverlap = strongCategoryMatches(main, site);
     if (editorial && commerce < 4) return false;
     if (commerce < 2) return false;
-    return strongCategoryOverlap > 0 || (categoryOverlap > 0 && commerce >= 5);
+    if (site.sourceType === 'direct-site') return commerce >= 3 || strongCategoryOverlap > 0;
+    return categoryOverlap > 0 && commerce >= 2;
   });
 
   return accepted
