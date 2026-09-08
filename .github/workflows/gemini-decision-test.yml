@@ -6,6 +6,9 @@ on:
     paths:
       - 'src/lib/decision.functions.ts'
       - 'src/routes/decision.tsx'
+      - 'src/lib/memory.functions.ts'
+      - 'src/routes/memory.tsx'
+      - 'supabase/migrations/**'
       - 'src/lib/ai-engine.server.ts'
       - 'src/lib/ai-output.server.ts'
       - 'scripts/**'
