@@ -35,14 +35,27 @@ async function call(provider: Provider, prompt: string) {
   if (provider === 'openai') {
     response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: models.openai, input: prompt, tools: [{ type: 'web_search_preview' }], include: ['web_search_call.action.sources'] }) });
   } else if (provider === 'gemini') {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models.gemini)}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { responseMimeType: 'application/json' } }) });
+    let lastError = '';
+    for (let attempt = 0; attempt < 4; attempt++) {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(models.gemini)}:generateContent?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { responseMimeType: 'application/json' } }) });
+      if (response.ok) break;
+      const body = await response.text();
+      lastError = `gemini ${response.status}${body ? `: ${body.slice(0, 1200)}` : ''}`;
+      if (response.status !== 429 || attempt === 3) throw new Error(lastError);
+      const retryAfter = Number(response.headers.get('retry-after'));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1500 * 2 ** attempt;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 15000)));
+    }
   } else if (provider === 'openrouter') {
     response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env.COANTO_SITE_URL || 'https://coanto.com', 'X-Title': 'COANTO AI Benchmark' }, body: JSON.stringify({ model: models.openrouter, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }] }) });
   } else {
     response = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model: models.anthropic, max_tokens: 3000, messages: [{ role: 'user', content: prompt }], tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: 6 }] }) });
   }
-  if (!response.ok) throw new Error(`${provider} ${response.status}`);
-  const data = await response.json();
+  if (!response!.ok) {
+    const body = await response!.text();
+    throw new Error(`${provider} ${response!.status}${body ? `: ${body.slice(0, 1200)}` : ''}`);
+  }
+  const data = await response!.json();
   return { text: text(data), sources: sources(data) };
 }
 
