@@ -65,6 +65,12 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:3000/api/health > /tmp/coanto-health.json
           grep -Eq '"ok":true' /tmp/coanto-health.json
           grep -Eq '"service":"coanto"' /tmp/coanto-health.json
+      - name: Validate product routes
+        run: |
+          for path in /decision /memory /monitoring /business-intelligence; do
+            curl --fail --silent --show-error "http://127.0.0.1:3000${path}" > "/tmp/coanto-${path#/}.html"
+            test -s "/tmp/coanto-${path#/}.html"
+          done
       - name: Stop production server
         if: always()
         run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
