@@ -1,13 +1,42 @@
 import { createServerFn } from "@tanstack/react-start";
+import { createHash } from "node:crypto";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { fetchSite, validateTargetUrl } from "@/lib/analyze.server";
 import type { Json } from "@/integrations/supabase/types";
 
 export type MonitoringTarget={id:string;name:string;url:string;intervalHours:number;active:boolean;lastCheckedAt:string|null;nextCheckAt:string|null;createdAt:string};
 export type MonitoringEvent={id:string;targetId:string;eventType:string;severity:string;title:string;summary:string;evidence:Json;detectedAt:string;acknowledgedAt:string|null};
+export type MonitoringCheck={changed:boolean;event:MonitoringEvent|null;checkedAt:string};
 const mapTarget=(r:any):MonitoringTarget=>({id:r.id,name:r.name,url:r.url,intervalHours:r.interval_hours,active:r.active,lastCheckedAt:r.last_checked_at,nextCheckAt:r.next_check_at,createdAt:r.created_at});
 const mapEvent=(r:any):MonitoringEvent=>({id:r.id,targetId:r.target_id,eventType:r.event_type,severity:r.severity,title:r.title,summary:r.summary,evidence:r.evidence??{},detectedAt:r.detected_at,acknowledgedAt:r.acknowledged_at});
 export const listMonitoringTargets=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).handler(async({context})=>{const {data,error}=await context.supabase.from("monitoring_targets").select("id,name,url,interval_hours,active,last_checked_at,next_check_at,created_at").eq("user_id",context.userId).order("created_at",{ascending:false});if(error)throw new Error(error.message);return(data??[]).map(mapTarget);});
-export const createMonitoringTarget=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator((i:{name:string;url:string;intervalHours?:number})=>i).handler(async({data,context})=>{const name=data.name.trim(),url=data.url.trim();if(!name||!url)throw new Error("اسم الموقع والرابط مطلوبان");const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol))throw new Error("الرابط يجب أن يبدأ بـ http أو https");const hours=Math.min(Math.max(Math.round(data.intervalHours??24),1),720);const {data:row,error}=await context.supabase.from("monitoring_targets").insert({user_id:context.userId,name,url,interval_hours:hours,active:true,next_check_at:new Date(Date.now()+hours*3600000).toISOString()}).select("id,name,url,interval_hours,active,last_checked_at,next_check_at,created_at").single();if(error)throw new Error(error.message);return mapTarget(row);});
+export const createMonitoringTarget=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator((i:{name:string;url:string;intervalHours?:number})=>i).handler(async({data,context})=>{const name=data.name.trim(),url=data.url.trim();if(!name||!url)throw new Error("اسم الموقع والرابط مطلوبان");const validation=validateTargetUrl(url);if(!validation.ok)throw new Error(validation.reason);const hours=Math.min(Math.max(Math.round(data.intervalHours??24),1),720);const {data:row,error}=await context.supabase.from("monitoring_targets").insert({user_id:context.userId,name,url:validation.url,interval_hours:hours,active:true,next_check_at:new Date(Date.now()+hours*3600000).toISOString()}).select("id,name,url,interval_hours,active,last_checked_at,next_check_at,created_at").single();if(error)throw new Error(error.message);return mapTarget(row);});
 export const setMonitoringActive=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator((i:{id:string;active:boolean})=>i).handler(async({data,context})=>{const {error}=await context.supabase.from("monitoring_targets").update({active:data.active}).eq("id",data.id).eq("user_id",context.userId);if(error)throw new Error(error.message);return{ok:true};});
 export const listMonitoringEvents=createServerFn({method:"GET"}).middleware([requireSupabaseAuth]).inputValidator((i:{limit?:number})=>i??{}).handler(async({data,context})=>{const limit=Math.min(Math.max(data.limit??50,1),100);const {data:rows,error}=await context.supabase.from("monitoring_events").select("id,target_id,event_type,severity,title,summary,evidence,detected_at,acknowledged_at").eq("user_id",context.userId).order("detected_at",{ascending:false}).limit(limit);if(error)throw new Error(error.message);return(rows??[]).map(mapEvent);});
 export const acknowledgeMonitoringEvent=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator((i:{id:string})=>i).handler(async({data,context})=>{const {error}=await context.supabase.from("monitoring_events").update({acknowledged_at:new Date().toISOString()}).eq("id",data.id).eq("user_id",context.userId);if(error)throw new Error(error.message);return{ok:true};});
+
+export const runMonitoringCheck=createServerFn({method:"POST"}).middleware([requireSupabaseAuth]).inputValidator((i:{id:string})=>i).handler(async({data,context}):Promise<MonitoringCheck>=>{
+  const {data:target,error:targetError}=await context.supabase.from("monitoring_targets").select("id,name,url,interval_hours,active").eq("id",data.id).eq("user_id",context.userId).maybeSingle();
+  if(targetError)throw new Error(targetError.message); if(!target)throw new Error("هدف المراقبة غير موجود.");
+  const checkedAt=new Date(); const next=new Date(checkedAt.getTime()+Number(target.interval_hours)*3600000).toISOString();
+  try {
+    const snapshot=await fetchSite(target.url); const hash=createHash("sha256").update(`${snapshot.title}\n${snapshot.description}\n${snapshot.h1.join("\n")}\n${snapshot.h2.join("\n")}\n${snapshot.text}`).digest("hex");
+    const {data:previous,error:previousError}=await context.supabase.from("monitoring_snapshots").select("id,content_hash,title,text_excerpt,checked_at").eq("target_id",target.id).order("checked_at",{ascending:false}).limit(1).maybeSingle();
+    if(previousError)throw new Error(previousError.message);
+    const changed=Boolean(previous && previous.content_hash!==hash);
+    const {error:insertError}=await context.supabase.from("monitoring_snapshots").insert({user_id:context.userId,target_id:target.id,content_hash:hash,title:snapshot.title,text_excerpt:snapshot.text.slice(0,4000),checked_at:checkedAt.toISOString()});
+    if(insertError)throw new Error(insertError.message);
+    let event:MonitoringEvent|null=null;
+    if(changed){
+      const {data:row,error}=await context.supabase.from("monitoring_events").insert({user_id:context.userId,target_id:target.id,event_type:"change",severity:"medium",title:`تغيّر في ${target.name}`,summary:`تم اكتشاف تغيّر في المحتوى منذ آخر فحص.`,evidence:{url:target.url,previousHash:previous?.content_hash,currentHash:hash,previousCheckedAt:previous?.checked_at,title:snapshot.title}}).select("id,target_id,event_type,severity,title,summary,evidence,detected_at,acknowledged_at").single();
+      if(error)throw new Error(error.message); event=mapEvent(row);
+    }
+    const {error:updateError}=await context.supabase.from("monitoring_targets").update({last_checked_at:checkedAt.toISOString(),next_check_at:next}).eq("id",target.id).eq("user_id",context.userId); if(updateError)throw new Error(updateError.message);
+    return {changed,event,checkedAt:checkedAt.toISOString()};
+  } catch(error){
+    const message=error instanceof Error?error.message:"فشل فحص الموقع.";
+    await context.supabase.from("monitoring_events").insert({user_id:context.userId,target_id:target.id,event_type:"error",severity:"high",title:`فشل فحص ${target.name}`,summary:message.slice(0,500),evidence:{url:target.url}});
+    await context.supabase.from("monitoring_targets").update({last_checked_at:checkedAt.toISOString(),next_check_at:next}).eq("id",target.id).eq("user_id",context.userId);
+    throw new Error(`فشل فحص ${target.name}: ${message}`);
+  }
+});
