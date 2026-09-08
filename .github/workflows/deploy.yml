@@ -69,7 +69,7 @@ jobs:
         run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
 
   ai-live-e2e:
-    name: AI live E2E (real providers)
+    name: AI live E2E (Gemini only)
     runs-on: ubuntu-latest
     needs: verify
     steps:
@@ -78,32 +78,21 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
-      - name: Verify provider secret wiring without exposing secrets
+      - name: Verify Gemini secret wiring without exposing the secret
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
         run: |
-          [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
-          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
-          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
-          [ -n "$ANTHROPIC_API_KEY" ] && echo "ANTHROPIC_API_KEY=present" || echo "ANTHROPIC_API_KEY=missing"
-      - name: Run real AI end-to-end test
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || (echo "GEMINI_API_KEY=missing" && exit 1)
+      - name: Run real Gemini end-to-end test
         env:
           COANTO_E2E_URL: https://www.allbirds.com/
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+          AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
         run: bun run test:ai-live-e2e
 
   live-discovery:
-    name: Live discovery (diagnostic)
+    name: Live discovery (Gemini only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -111,27 +100,12 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
-      - name: Verify AI provider secret wiring without exposing secrets
+      - name: Verify Gemini secret wiring without exposing the secret
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
         run: |
-          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
-          [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
-          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
-      - name: Inspect accessible Actions secret names (names only)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh secret list --repo "${GITHUB_REPOSITORY}" --app actions > actions-secrets.txt 2>&1; then
-            echo "Actions secret listing succeeded. Names only:"
-            cat actions-secrets.txt | sed -E 's/[[:space:]]+[0-9]+.*$//' | sort -u
-          else
-            echo "Actions secret listing is not permitted by GITHUB_TOKEN; runtime wiring check remains authoritative."
-            cat actions-secrets.txt || true
-          fi
-      - name: Run live discovery
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || (echo "GEMINI_API_KEY=missing" && exit 1)
+      - name: Run live discovery with Gemini
         id: live
         continue-on-error: true
         run: |
@@ -140,15 +114,9 @@ jobs:
         env:
           BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
-          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+          AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
       - name: Record live discovery outcome
         if: always()
         run: echo "live-discovery outcome=${{ steps.live.outcome }} conclusion=${{ steps.live.conclusion }}"
@@ -159,10 +127,9 @@ jobs:
           name: coanto-live-discovery
           path: |
             live-smoke.log
-            actions-secrets.txt
 
   ai-benchmark:
-    name: AI benchmark (diagnostic)
+    name: AI benchmark (Gemini only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -170,26 +137,21 @@ jobs:
         with:
           bun-version: latest
       - run: bun install
-      - name: Verify OpenRouter secret wiring without exposing the value
+      - name: Verify Gemini secret wiring without exposing the secret
         env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
         run: |
-          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
-      - name: Run AI benchmark
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || (echo "GEMINI_API_KEY=missing" && exit 1)
+      - name: Run Gemini benchmark
         id: benchmark
         continue-on-error: true
         run: |
           set -o pipefail
           bun scripts/ai-benchmark.ts | tee ai-benchmark.log
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_COANTO_ONE }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+          AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
-          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
       - name: Record AI benchmark outcome
         if: always()
         run: echo "ai-benchmark outcome=${{ steps.benchmark.outcome }} conclusion=${{ steps.benchmark.conclusion }}"
