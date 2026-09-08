@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, ai-contract, build]
+        check: [typecheck, lint, smoke, ai-contract, build, monitoring-live]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -33,6 +33,7 @@ jobs:
             smoke) bun run test:smoke ;;
             ai-contract) bun run test:ai-contract ;;
             build) bun run build ;;
+            monitoring-live) bun run test:monitoring-live ;;
           esac
 
   runtime-smoke:
@@ -88,7 +89,7 @@ jobs:
           COANTO_E2E_URL: https://www.allbirds.com/
           AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
         run: bun run test:ai-live-e2e
 
   live-discovery:
@@ -116,7 +117,7 @@ jobs:
           BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
           AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
       - name: Record live discovery outcome
         if: always()
         run: echo "live-discovery outcome=${{ steps.live.outcome }} conclusion=${{ steps.live.conclusion }}"
@@ -151,7 +152,7 @@ jobs:
         env:
           AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
       - name: Record AI benchmark outcome
         if: always()
         run: echo "ai-benchmark outcome=${{ steps.benchmark.outcome }} conclusion=${{ steps.benchmark.conclusion }}"
