@@ -4,7 +4,7 @@ type Provider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
 type Row = { provider: Provider; model: string; caseId: string; competitors: any[]; sources: string[]; raw: string; latencyMs: number; error?: string };
 
 const keys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
-const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-1.5-pro', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
+const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: process.env.GEMINI_MODEL || 'gemini-2.5-flash', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
 const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
 const cases = BENCHMARK_CASES.slice(0, 6);
 const rows: Row[] = [];
