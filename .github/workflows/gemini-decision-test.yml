@@ -1,0 +1,41 @@
+name: Gemini Decision Test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/lib/decision.functions.ts'
+      - 'src/routes/decision.tsx'
+      - 'src/lib/ai-engine.server.ts'
+      - 'src/lib/ai-output.server.ts'
+      - 'scripts/**'
+      - '.github/workflows/gemini-decision-test.yml'
+
+jobs:
+  gemini-decision-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run Gemini-backed tests
+        run: npm run test:ai
+
+      - name: Build
+        run: npm run build
