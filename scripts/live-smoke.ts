@@ -14,6 +14,7 @@ for (const target of targets) {
     console.log(`MAIN source=${main.sourceType} host=${mainHost} title=${main.title.slice(0, 120)} evidence=${main.evidence.length}`);
 
     const discovered = await discoverCompetitors(main);
+    console.log(`DISCOVERED_RAW=${discovered.map((site) => hostname(site.url)).join(",")}`);
     const competitors = filterCommercialCompetitors(main, discovered);
     console.log(`DISCOVERED=${discovered.length} COMMERCIAL=${competitors.length}`);
 
@@ -27,7 +28,7 @@ for (const target of targets) {
 
     if (!competitors.length) throw new Error("Live discovery returned zero commercial competitors");
     const prompt = buildPrompt(main, competitors);
-    if (!prompt.includes("Evidence") && !prompt.includes("الأدلة")) throw new Error("Analysis prompt does not contain evidence context");
+    if (!/(evidence|الأدلة)/i.test(prompt)) throw new Error("Analysis prompt does not contain evidence context");
     if (!prompt.includes(main.url)) throw new Error("Analysis prompt does not contain the main source URL");
     for (const competitor of competitors.slice(0, 10)) {
       if (!prompt.includes(competitor.url)) throw new Error(`Analysis prompt does not contain competitor URL: ${hostname(competitor.url)}`);
