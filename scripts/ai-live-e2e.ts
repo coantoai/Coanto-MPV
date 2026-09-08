@@ -1,6 +1,7 @@
 import { discoverCompetitors, fetchSite } from '../src/lib/analyze.server';
 import { runAiProvider, type AiProvider } from '../src/lib/ai-engine.server';
 import { validateAiOutput } from '../src/lib/ai-output.server';
+import { enforceEvidence } from '../src/lib/trust.server';
 
 const providers: AiProvider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
 const keys: Record<AiProvider, string> = {
@@ -55,20 +56,22 @@ async function main() {
       const end = run.text.lastIndexOf('}');
       if (start < 0 || end <= start) throw new Error('provider returned no JSON object');
       const parsed = validateAiOutput(JSON.parse(run.text.slice(start, end + 1)));
-      const competitors = Array.isArray(parsed.competitors) ? parsed.competitors : [];
-      if (!competitors.length) throw new Error('validated output contains no competitors');
+      const trusted = enforceEvidence(parsed, main, discovered, run.sources);
+      const competitors = Array.isArray(trusted['competitors']) ? trusted['competitors'] : [];
+      if (!competitors.length) throw new Error('evidence gate removed every AI competitor');
       const evidenced = competitors.filter((item) => {
         const row = item as Record<string, unknown>;
-        return Boolean(String(row['evidence'] ?? '').trim()) && Array.isArray(row['sourceUrls']) && row['sourceUrls'].length > 0;
+        return Boolean(String(row['evidence'] ?? '').trim()) && Boolean(String(row['evidenceSourceType'] ?? '').trim());
       });
-      if (!evidenced.length) throw new Error('no competitor has both evidence and sourceUrls');
+      if (!evidenced.length) throw new Error('no competitor survived evidence enforcement');
+      const metadata = trusted['metadata'] as Record<string, unknown> | undefined;
+      if (metadata?.['claimLinkageChecked'] !== true) throw new Error('claim linkage check did not run');
       successful += 1;
       console.log(`PASS ${provider} model=${run.model} competitors=${competitors.length} evidenced=${evidenced.length} latency=${Date.now() - started}ms sources=${run.sources.length}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       failures.push(`${provider}: ${message}`);
       console.error(`FAIL ${provider} latency=${Date.now() - started}ms error=${message}`);
-      // A quota/rate-limit/provider outage must not prevent testing the other configured providers.
       continue;
     }
   }
@@ -76,7 +79,7 @@ async function main() {
   console.log(`AI LIVE E2E RESULT: ${successful}/${configured.length} configured provider(s) passed.`);
   if (failures.length) console.log(`Provider failures: ${failures.join(' | ')}`);
   if (!successful) throw new Error(`No configured AI provider passed the live E2E test. ${failures.join(' | ')}`.slice(0, 1800));
-  console.log('AI LIVE E2E PASS: at least one configured real AI provider completed the full contract/evidence validation.');
+  console.log('AI LIVE E2E PASS: at least one configured real AI provider completed evidence enforcement and contract validation.');
 }
 
 await main();
