@@ -68,6 +68,40 @@ jobs:
         if: always()
         run: if [ -f runtime.pid ]; then kill "$(cat runtime.pid)" || true; fi
 
+  ai-live-e2e:
+    name: AI live E2E (real providers)
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Verify provider secret wiring without exposing secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
+        run: |
+          [ -n "$OPENAI_API_KEY" ] && echo "OPENAI_API_KEY=present" || echo "OPENAI_API_KEY=missing"
+          [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || echo "GEMINI_API_KEY=missing"
+          [ -n "$OPENROUTER_API_KEY" ] && echo "OPENROUTER_API_KEY=present" || echo "OPENROUTER_API_KEY=missing"
+          [ -n "$ANTHROPIC_API_KEY" ] && echo "ANTHROPIC_API_KEY=present" || echo "ANTHROPIC_API_KEY=missing"
+      - name: Run real AI end-to-end test
+        env:
+          COANTO_E2E_URL: https://www.allbirds.com/
+          OPENAI_API_KEY: ${{ secrets.OPENAI_COANTO_ONE }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_COANTO_ONE || secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_COANTO || secrets.OPENROUTER_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
+          ANTHROPIC_API_KEY: ${{ secrets.CLAUDE_COANTO_ONE }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
+        run: bun run test:ai-live-e2e
+
   live-discovery:
     name: Live discovery (diagnostic)
     runs-on: ubuntu-latest
