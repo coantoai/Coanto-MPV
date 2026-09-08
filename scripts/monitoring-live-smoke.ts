@@ -4,7 +4,7 @@ import { fetchSite, validateTargetUrl } from '../src/lib/analyze.server.ts';
 const targets = [
   'https://www.allbirds.com/',
   'https://www.nike.com/',
-  'https://www.adidas.com/',
+  'https://www.shopify.com/',
 ];
 let passed = 0;
 for (const target of targets) {
@@ -25,5 +25,5 @@ for (const blocked of ['http://localhost:3000','http://127.0.0.1:8080','http://1
   if (validateTargetUrl(blocked).ok) { console.error(`FAIL SSRF guard ${blocked}`); continue; }
   passed += 1; console.log(`PASS SSRF guard ${blocked}`);
 }
-console.log(`Monitoring live smoke: ${passed}/${targets.length + 5 + 0} checks passed`);
+console.log(`Monitoring live smoke: ${passed}/${targets.length + 5} checks passed`);
 if (passed < targets.length + 5) process.exit(1);
