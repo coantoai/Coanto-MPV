@@ -23,6 +23,12 @@ function snapshotContent(snapshot: SiteSnapshot) {
   ].filter(Boolean).join('\n');
 }
 
+function canonicalCollectionUrl(value: string) {
+  const url = new URL(value);
+  url.hash = '';
+  return url.toString();
+}
+
 function inputFromSnapshot(snapshot: SiteSnapshot, request: EvidenceCollectionRequest, retrievedAt: string): EvidenceInput {
   return {
     kind: snapshot.sourceType === 'direct-site' ? 'direct' : 'search',
@@ -58,7 +64,7 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
       rejected.push({ url: trimmed, reason: validation.reason ?? 'Invalid public URL.' });
       continue;
     }
-    const canonical = validation.url;
+    const canonical = canonicalCollectionUrl(validation.url);
     if (!seenUrls.has(canonical)) {
       seenUrls.add(canonical);
       normalizedUrls.push(canonical);
