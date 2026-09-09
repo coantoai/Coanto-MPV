@@ -24,11 +24,11 @@ export type ClaimInput = {
 };
 
 function clean(value: string) {
-  return value .replaceAll(String.fromCharCode (0), "")
+  return value.replaceAll(String.fromCharCode(0), '').replace(/\s+/g, ' ').trim().slice(0, 2_000);
 }
 
 function normalizeClaim(text: string) {
-  return clean(text, 2_000).toLocaleLowerCase('en-US');
+  return clean(text).toLocaleLowerCase('en-US');
 }
 
 function claimId(normalized: string, type: ClaimType) {
