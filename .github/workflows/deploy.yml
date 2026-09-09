@@ -41,6 +41,29 @@ jobs:
             monitoring-live) bun run test:monitoring-live ;;
           esac
 
+  insforge-integration:
+    name: InsForge integration
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Verify InsForge secrets are present without exposing them
+        env:
+          INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
+          INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+        run: |
+          [ -n "$INSFORGE_URL" ] && echo "INSFORGE_URL=present" || (echo "INSFORGE_URL=missing" && exit 1)
+          [ -n "$INSFORGE_API_KEY" ] && echo "INSFORGE_API_KEY=present" || (echo "INSFORGE_API_KEY=missing" && exit 1)
+      - name: Apply COANTO schema and verify real persistence
+        env:
+          INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
+          INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+        run: bun run test:insforge
+
   runtime-smoke:
     runs-on: ubuntu-latest
     needs: verify
