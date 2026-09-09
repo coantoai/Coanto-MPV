@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, evidence, evidence-collector, ai-contract, build, monitoring-live]
+        check: [typecheck, lint, smoke, evidence, evidence-collector, claim, ai-contract, build, monitoring-live]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -33,6 +33,7 @@ jobs:
             smoke) bun run test:smoke ;;
             evidence) bun run test:evidence ;;
             evidence-collector) bun run test:evidence-collector ;;
+            claim) bun run test:claim ;;
             ai-contract) bun run test:ai-contract ;;
             build) bun run build ;;
             monitoring-live) bun run test:monitoring-live ;;
@@ -65,8 +66,8 @@ jobs:
       - name: Validate health endpoint
         run: |
           curl --fail --silent --show-error http://127.0.0.1:3000/api/health > /tmp/coanto-health.json
-          grep -Eq '"ok":true' /tmp/coanto-health.json
-          grep -Eq '"service":"coanto"' /tmp/coanto-health.json
+          grep -Eq '\"ok\":true' /tmp/coanto-health.json
+          grep -Eq '\"service\":\"coanto\"' /tmp/coanto-health.json
       - name: Validate product routes
         run: |
           for path in /decision /memory /monitoring /business-intelligence; do
