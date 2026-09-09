@@ -1,0 +1,124 @@
+import { createHash } from 'node:crypto';
+
+export type EvidenceKind = 'direct' | 'search' | 'calculation' | 'historical' | 'inference';
+export type EvidenceStatus = 'VERIFIED' | 'UNVERIFIED' | 'REJECTED';
+
+export type EvidenceRecord = {
+  id: string;
+  kind: EvidenceKind;
+  sourceUrl: string;
+  sourceDomain: string;
+  sourceGroup: string;
+  observedAt: string;
+  retrievedAt: string;
+  content: string;
+  contentHash: string;
+  status: EvidenceStatus;
+  supportsClaim?: string;
+  contradictsClaim?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+};
+
+export type EvidenceInput = Omit<EvidenceRecord, 'id' | 'sourceDomain' | 'observedAt' | 'retrievedAt' | 'contentHash' | 'status'> & {
+  observedAt?: string;
+  retrievedAt?: string;
+  status?: EvidenceStatus;
+};
+
+const MAX_CONTENT_LENGTH = 50_000;
+
+function clean(value: string, max = MAX_CONTENT_LENGTH) {
+  return value.replace(/\u0000/g, '').trim().slice(0, max);
+}
+
+function domainFromUrl(sourceUrl: string) {
+  try {
+    return new URL(sourceUrl).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function assertTimestamp(value: string, field: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) throw new Error(`${field} must be a valid ISO timestamp.`);
+  return new Date(timestamp).toISOString();
+}
+
+function canonicalContent(content: string) {
+  return clean(content).replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ');
+}
+
+function hashEvidence(input: { kind: EvidenceKind; sourceUrl: string; observedAt: string; content: string }) {
+  const canonical = [input.kind, input.sourceUrl, input.observedAt, canonicalContent(input.content)].join('\n');
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
+export function validateEvidenceInput(input: EvidenceInput) {
+  if (!input.sourceUrl?.trim()) throw new Error('Evidence sourceUrl is required.');
+  let url: URL;
+  try {
+    url = new URL(input.sourceUrl);
+  } catch {
+    throw new Error('Evidence sourceUrl must be a valid URL.');
+  }
+  if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Evidence sourceUrl must use HTTP or HTTPS.');
+  if (!input.kind) throw new Error('Evidence kind is required.');
+  if (!input.content?.trim()) throw new Error('Evidence content is required.');
+  const observedAt = assertTimestamp(input.observedAt ?? input.retrievedAt ?? new Date().toISOString(), 'observedAt');
+  const retrievedAt = assertTimestamp(input.retrievedAt ?? new Date().toISOString(), 'retrievedAt');
+  if (Date.parse(retrievedAt) < Date.parse(observedAt)) throw new Error('retrievedAt cannot be earlier than observedAt.');
+  return { url: url.toString(), observedAt, retrievedAt };
+}
+
+/** Creates immutable, content-addressed evidence with explicit provenance. */
+export function createEvidence(input: EvidenceInput): EvidenceRecord {
+  const valid = validateEvidenceInput(input);
+  const sourceUrl = valid.url;
+  const content = canonicalContent(input.content);
+  const contentHash = hashEvidence({ kind: input.kind, sourceUrl, observedAt: valid.observedAt, content });
+  const sourceDomain = domainFromUrl(sourceUrl);
+  if (!sourceDomain) throw new Error('Evidence source URL has no usable domain.');
+
+  const id = `ev_${contentHash.slice(0, 24)}`;
+  return {
+    id,
+    kind: input.kind,
+    sourceUrl,
+    sourceDomain,
+    sourceGroup: clean(input.sourceGroup || sourceDomain, 200).toLowerCase(),
+    observedAt: valid.observedAt,
+    retrievedAt: valid.retrievedAt,
+    content,
+    contentHash,
+    status: input.status ?? 'UNVERIFIED',
+    ...(input.supportsClaim ? { supportsClaim: clean(input.supportsClaim, 500) } : {}),
+    ...(input.contradictsClaim ? { contradictsClaim: clean(input.contradictsClaim, 500) } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {}),
+  };
+}
+
+/** Deduplicates evidence by stable content identity, never by display text alone. */
+export function dedupeEvidence(records: EvidenceRecord[]) {
+  const seen = new Map<string, EvidenceRecord>();
+  for (const record of records) {
+    const key = record.contentHash || record.id;
+    if (!seen.has(key)) seen.set(key, record);
+  }
+  return [...seen.values()];
+}
+
+export function evidenceToTrustItem(record: EvidenceRecord) {
+  return {
+    id: record.id,
+    sourceUrl: record.sourceUrl,
+    sourceDomain: record.sourceDomain,
+    sourceGroup: record.sourceGroup,
+    kind: record.kind,
+    observedAt: record.observedAt,
+    supportsClaim: Boolean(record.supportsClaim) && !record.contradictsClaim,
+    contradictsClaim: Boolean(record.contradictsClaim),
+    directness: record.kind === 'direct' ? 1 : record.kind === 'calculation' ? 0.95 : record.kind === 'search' ? 0.65 : 0.5,
+    reliability: record.status === 'VERIFIED' ? 0.9 : record.status === 'REJECTED' ? 0 : 0.6,
+  };
+}
