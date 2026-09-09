@@ -27,7 +27,7 @@ function inputFromSnapshot(snapshot: SiteSnapshot, request: EvidenceCollectionRe
   return {
     kind: snapshot.sourceType === 'direct-site' ? 'direct' : 'search',
     sourceUrl: snapshot.url,
-    sourceGroup: request.sourceGroup,
+    sourceGroup: request.sourceGroup?.trim() || new URL(snapshot.url).hostname.replace(/^www\./, '').toLowerCase(),
     observedAt: request.observedAt ?? retrievedAt,
     retrievedAt,
     content: snapshotContent(snapshot),
@@ -47,30 +47,43 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
   const maxSources = Math.max(1, Math.min(request.maxSources ?? 12, 24));
   const records: EvidenceRecord[] = [];
   const rejected: Array<{ url: string; reason: string }> = [];
-  const urls = [...new Set(request.urls.map((url) => url.trim()).filter(Boolean))].slice(0, maxSources);
+  const normalizedUrls: string[] = [];
+  const seenUrls = new Set<string>();
 
-  for (const rawUrl of urls) {
-    const validation = validateTargetUrl(rawUrl);
-    if (!validation.ok) {
-      rejected.push({ url: rawUrl, reason: validation.reason ?? 'Invalid public URL.' });
+  for (const raw of request.urls) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const validation = validateTargetUrl(trimmed);
+    if (!validation.ok || !validation.url) {
+      rejected.push({ url: trimmed, reason: validation.reason ?? 'Invalid public URL.' });
       continue;
     }
+    const canonical = validation.url;
+    if (!seenUrls.has(canonical)) {
+      seenUrls.add(canonical);
+      normalizedUrls.push(canonical);
+    }
+    if (normalizedUrls.length >= maxSources) break;
+  }
 
+  for (const sourceUrl of normalizedUrls) {
     const retrievedAt = new Date().toISOString();
     try {
-      const snapshot = await fetchSite(validation.url!);
+      const snapshot = await fetchSite(sourceUrl);
       records.push(createEvidence(inputFromSnapshot(snapshot, request, retrievedAt)));
       continue;
     } catch (directError) {
       try {
-        const fallback = await searchEvidenceForUrl(validation.url!);
+        const fallback = await searchEvidenceForUrl(sourceUrl);
         if (fallback) {
           records.push(createEvidence(inputFromSnapshot(fallback, request, retrievedAt)));
           continue;
         }
-      } catch {}
+      } catch {
+        // Preserve the original direct-fetch error as the actionable failure reason.
+      }
       rejected.push({
-        url: rawUrl,
+        url: sourceUrl,
         reason: directError instanceof Error ? directError.message.slice(0, 300) : 'Source collection failed.',
       });
     }
