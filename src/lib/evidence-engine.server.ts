@@ -28,7 +28,7 @@ export type EvidenceInput = Omit<EvidenceRecord, 'id' | 'sourceDomain' | 'observ
 const MAX_CONTENT_LENGTH = 50_000;
 
 function clean(value: string, max = MAX_CONTENT_LENGTH) {
-  return value.replace(/\u0000/g, '').trim().slice(0, max);
+  return value.replaceAll('\u0000', '').trim().slice(0, max);
 }
 
 function isPrivateIpv4(host: string) {
@@ -127,8 +127,7 @@ export function createEvidence(input: EvidenceInput): EvidenceRecord {
 export function dedupeEvidence(records: EvidenceRecord[]) {
   const seen = new Map<string, EvidenceRecord>();
   for (const record of records) {
-    const key = record.id;
-    if (!seen.has(key)) seen.set(key, record);
+    if (!seen.has(record.id)) seen.set(record.id, record);
   }
   return [...seen.values()];
 }
