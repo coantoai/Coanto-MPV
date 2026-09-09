@@ -23,7 +23,7 @@ export type ClaimInput = {
   createdAt?: string;
 };
 
-function clean(value: string, max = 2_000) {
+function clean(value: string) {
   return value .replaceAll(String.fromCharCode (0), "")
 }
 
