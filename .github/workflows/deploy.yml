@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, evidence, evidence-collector, claim, ai-contract, build, monitoring-live]
+        check: [typecheck, lint, smoke, evidence, evidence-collector, claim, evidence-graph, ai-contract, build, monitoring-live]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -34,6 +34,7 @@ jobs:
             evidence) bun run test:evidence ;;
             evidence-collector) bun run test:evidence-collector ;;
             claim) bun run test:claim ;;
+            evidence-graph) bun run test:evidence-graph ;;
             ai-contract) bun run test:ai-contract ;;
             build) bun run build ;;
             monitoring-live) bun run test:monitoring-live ;;
