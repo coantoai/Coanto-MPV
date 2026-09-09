@@ -45,6 +45,10 @@ function inputFromSnapshot(snapshot: SiteSnapshot, request: EvidenceCollectionRe
   };
 }
 
+function hasExplicitScheme(value: string) {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(value);
+}
+
 /**
  * Collects source observations only. It never promotes an observation to VERIFIED
  * and never treats an AI-generated statement as evidence by itself.
@@ -59,6 +63,10 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
   for (const raw of request.urls) {
     const trimmed = raw.trim();
     if (!trimmed) continue;
+    if (hasExplicitScheme(trimmed) && !/^https?:\/\//i.test(trimmed)) {
+      rejected.push({ url: trimmed, reason: 'فقط روابط HTTP وHTTPS مسموحة.' });
+      continue;
+    }
     const validation = validateTargetUrl(trimmed);
     if (!validation.ok || !validation.url) {
       rejected.push({ url: trimmed, reason: validation.reason ?? 'Invalid public URL.' });
