@@ -23,12 +23,12 @@ export type ClaimInput = {
   createdAt?: string;
 };
 
-function clean(value: string, max = 2_000) {
-  return value.replaceAll(String.fromCharCode(0), '').replace(/\s+/g, ' ').trim().slice(0, max);
+function clean(value: string) {
+  return value.replaceAll(String.fromCharCode(0), '').replace(/\s+/g, ' ').trim().slice(0, 2_000);
 }
 
 function normalizeClaim(text: string) {
-  return clean(text, 2_000).toLocaleLowerCase('en-US');
+  return clean(text).toLocaleLowerCase('en-US');
 }
 
 function claimId(normalized: string, type: ClaimType) {
