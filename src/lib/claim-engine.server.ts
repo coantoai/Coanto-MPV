@@ -24,7 +24,7 @@ export type ClaimInput = {
 };
 
 function clean(value: string, max = 2_000) {
-  return value.replace(/\u0000/g, '').replace(/\s+/g, ' ').trim().slice(0, max);
+  return value .replaceAll(String.fromCharCode (0), "")
 }
 
 function normalizeClaim(text: string) {
