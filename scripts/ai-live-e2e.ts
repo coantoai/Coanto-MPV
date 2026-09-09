@@ -17,6 +17,34 @@ function compact(value: unknown, max: number) {
   return JSON.stringify(value).slice(0, max);
 }
 
+function parseJsonObject(text: string): unknown {
+  const cleaned = text.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  for (let start = cleaned.indexOf('{'); start >= 0; start = cleaned.indexOf('{', start + 1)) {
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let i = start; i < cleaned.length; i += 1) {
+      const char = cleaned[i];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (char === '\\') escaped = true;
+        else if (char === '"') quoted = false;
+        continue;
+      }
+      if (char === '"') { quoted = true; continue; }
+      if (char === '{') depth += 1;
+      else if (char === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = cleaned.slice(start, i + 1);
+          try { return JSON.parse(candidate); } catch { break; }
+        }
+      }
+    }
+  }
+  throw new Error('provider returned no valid JSON object');
+}
+
 async function main() {
   const main = await fetchSite(target);
   const discovered = await discoverCompetitors(main);
@@ -52,10 +80,7 @@ async function main() {
     const started = Date.now();
     try {
       const run = await runAiProvider(provider, prompt);
-      const start = run.text.indexOf('{');
-      const end = run.text.lastIndexOf('}');
-      if (start < 0 || end <= start) throw new Error('provider returned no JSON object');
-      const parsed = validateAiOutput(JSON.parse(run.text.slice(start, end + 1)));
+      const parsed = validateAiOutput(parseJsonObject(run.text));
       const trusted = enforceEvidence(parsed, main, discovered, run.sources);
       const competitors = Array.isArray(trusted['competitors']) ? trusted['competitors'] : [];
       if (!competitors.length) throw new Error('evidence gate removed every AI competitor');
