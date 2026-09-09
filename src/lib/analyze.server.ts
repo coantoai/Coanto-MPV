@@ -5,26 +5,19 @@ export type SiteSnapshot = { url: string; title: string; description: string; h1
 
 export function normalizeUrl(value: string) { const trimmed = value.trim(); return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`; }
 export function hostname(value: string) { try { return new URL(normalizeUrl(value)).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; } }
-
 function privateIpv4(host: string) { const p = host.split('.').map(Number); if (p.length !== 4 || p.some((x) => !Number.isInteger(x) || x < 0 || x > 255)) return false; return p[0] === 10 || p[0] === 127 || (p[0] === 169 && p[1] === 254) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168) || p.every((x) => x === 0); }
 function privateIpv6(host: string) { const h = host.toLowerCase().replace(/^\[|\]$/g, ''); if (!h.includes(':')) return false; return h === '::' || h === '::1' || h.startsWith('fc') || h.startsWith('fd') || /^fe[89ab]/.test(h) || h.startsWith('ff') || /^::ffff:(?:10\.|127\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(h); }
-
 export function validateTargetUrl(raw: string) { try { const parsed = new URL(normalizeUrl(raw)); const host = parsed.hostname.toLowerCase().replace(/^www\./, ''); if (!['http:', 'https:'].includes(parsed.protocol)) return { ok: false, reason: 'فقط روابط HTTP وHTTPS مسموحة.' }; if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || host === '0.0.0.0' || host === '::1' || privateIpv4(host) || privateIpv6(host)) return { ok: false, reason: 'عنوان الموقع يجب أن يكون عامًا على الإنترنت.' }; return { ok: true, url: parsed.toString() }; } catch { return { ok: false, reason: 'رابط الموقع غير صالح.' }; } }
-
 function decodeHtml(value: string) { return value.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ').replace(/<svg[\s\S]*?<\/svg>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/&#x27;/gi, "'").replace(/\s+/g, ' ').trim(); }
 function attr(tag: string, name: string) { return tag.match(new RegExp(`\\b${name}=["']([^"']*)["']`, 'i'))?.[1] ?? ''; }
 function extract(html: string, url: string): SiteSnapshot { const title = decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ''); const description = decodeHtml(html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? ''); const h1 = [...html.matchAll(/<h1[^>]*>([\s\S]*?)<\/h1>/gi)].map((m) => decodeHtml(m[1] ?? '')).filter(Boolean).slice(0, 8); const h2 = [...html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)].map((m) => decodeHtml(m[1] ?? '')).filter(Boolean).slice(0, 15); return { url, title, description, h1, h2, text: decodeHtml(html).slice(0, 16000), sourceType: 'direct-site', evidence: [`Direct site observation: ${url}`] }; }
-
 async function fetchWithTimeout(url: string, timeoutMs: number, headers: Record<string, string>, redirect: RequestRedirect = 'follow') { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs); try { return await fetch(url, { signal: controller.signal, headers, redirect }); } finally { clearTimeout(timer); } }
-
 export async function fetchSite(url: string) { let current = normalizeUrl(url); for (let redirects = 0; redirects <= 3; redirects += 1) { const validation = validateTargetUrl(current); if (!validation.ok) throw new Error(validation.reason); const response = await fetchWithTimeout(validation.url!, 12000, { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0; +https://coanto.com)', Accept: 'text/html,application/xhtml+xml' }, 'manual'); if (response.status >= 300 && response.status < 400) { const location = response.headers.get('location'); if (!location || redirects === 3) throw new Error('الموقع أعاد توجيهًا غير صالح أو متكررًا.'); current = new URL(location, current).toString(); continue; } if (!response.ok) throw new Error(`HTTP ${response.status}`); const type = response.headers.get('content-type') ?? ''; if (!type.includes('text/html') && !type.includes('application/xhtml+xml')) throw new Error(`نوع محتوى غير مدعوم: ${type || 'unknown'}`); return extract(await response.text(), validation.url!); } throw new Error('تعذّر الوصول إلى الموقع.'); }
-
 function searchUrl(query: string) { return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`; }
 function uniqueHits(hits: SearchHit[]) { const seen = new Set<string>(); return hits.filter((hit) => { const h = hostname(hit.url); if (!h) return false; let path = '/'; try { path = new URL(normalizeUrl(hit.url)).pathname; } catch { return false; } const key = `${h}${path}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
 function parseDuckHtml(html: string): SearchHit[] { const hits: SearchHit[] = []; for (const block of html.split(/(?=<div[^>]+class=["'][^"']*\bresult\b[^"']*["'])/i)) { const a = block.match(/<a\b([^>]*\bclass=["'][^"']*\bresult__a\b[^"']*[^>]*)>([\s\S]*?)<\/a>/i); if (!a) continue; let target = attr(a[1], 'href'); if (!target) continue; try { const parsed = new URL(target.startsWith('//') ? `https:${target}` : target); target = parsed.searchParams.get('uddg') ?? parsed.href; } catch { continue; } if (!/^https?:/i.test(target)) continue; const s = block.match(/<(?:a|div|span)[^>]+class=["'][^"']*\bresult__snippet\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:a|div|span)>/i); hits.push({ url: target, title: decodeHtml(a[2] ?? ''), snippet: decodeHtml(s?.[1] ?? ''), source: 'duckduckgo' }); } return uniqueHits(hits).slice(0, 12); }
 async function duckSearch(query: string): Promise<SearchHit[]> { try { const response = await fetchWithTimeout(searchUrl(query), 10000, { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0)', Accept: 'text/html' }); return response.ok ? parseDuckHtml(await response.text()) : []; } catch { return []; } }
 async function providerSearch(query: string): Promise<SearchHit[]> { const brave = process.env['BRAVE_SEARCH_API_KEY']; if (brave) { try { const response = await fetchWithTimeout(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=12`, 10000, { Accept: 'application/json', 'X-Subscription-Token': brave }); if (response.ok) { const data = (await response.json()) as { web?: { results?: Array<{ url?: string; title?: string; description?: string }> } }; const hits = (data.web?.results ?? []).map((x) => ({ url: x.url ?? '', title: x.title ?? '', snippet: x.description ?? '', source: 'brave' as const })).filter((x) => x.url); if (hits.length) return uniqueHits(hits).slice(0, 12); } } catch {} } const bing = process.env['BING_SEARCH_V7_KEY']; if (bing) { try { const response = await fetchWithTimeout(`https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=12&textDecorations=false&textFormat=Raw`, 10000, { Accept: 'application/json', 'Ocp-Apim-Subscription-Key': bing }); if (response.ok) { const data = (await response.json()) as { webPages?: { value?: Array<{ url?: string; name?: string; snippet?: string }> } }; const hits = (data.webPages?.value ?? []).map((x) => ({ url: x.url ?? '', title: x.name ?? '', snippet: x.snippet ?? '', source: 'bing' as const })).filter((x) => x.url); if (hits.length) return uniqueHits(hits).slice(0, 12); } } catch {} } return duckSearch(query); }
-
 const blockedHosts = ['facebook.com','instagram.com','youtube.com','linkedin.com','x.com','twitter.com','pinterest.com','reddit.com','wikipedia.org','google.com','bing.com','duckduckgo.com','tiktok.com','marketbeat.com','investing.com','benzinga.com','stockanalysis.com','sec.gov','finance.yahoo.com','crunchbase.com','zoominfo.com'];
 const editorialHostHints = ['bstrategyhub.com','distillintelligence.com','theshoeguider.com','fashionbeans.com','apartstyle.com','ecothes.com','theatlasheart.com','wetried.it','statista.com','seoaves.com','brandswitch.co','goodonyou.eco','makersrow.com','athleticbrands.org','latterly.org','similarsitesearch.com','ratingfacts.com','uaeexperthub.com','ahrefstop.com','saasworthy.com','sitesimilar.net','globalmediainsight.com','rocketreach.co','g2.com'];
 function blocked(host: string) { return blockedHosts.some((x) => host === x || host.endsWith(`.${x}`)); }
@@ -34,66 +27,27 @@ function candidateDomains(hits: SearchHit[], own: string, explicit: string[]) { 
 function brandCandidates(main: SiteSnapshot) { const values = [main.title, ...main.h1, ...main.h2, main.description].map((x) => x.replace(/\b(home|homepage|welcome|official|online|international|global|shop now|shop online)\b/gi, ' ').replace(/[|•·–—:-]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean); return values.filter((x) => x.split(/\s+/).length <= 10).slice(0, 6); }
 function likelyBrand(main: SiteSnapshot) { return hostname(main.url).split('.')[0]?.replace(/[-_]+/g, ' ') || brandCandidates(main)[0] || 'business'; }
 function searchSnapshot(hit: SearchHit): SiteSnapshot { return { url: normalizeUrl(hit.url), title: hit.title, description: hit.snippet, h1: [], h2: [], text: `Indexed public search evidence: ${hit.title}. ${hit.snippet}`.slice(0, 12000), sourceType: 'search-index', evidence: [`${hit.source === 'directory' ? 'Competitor directory' : 'Search index'} (${hit.source}): ${hit.title}${hit.snippet ? ` — ${hit.snippet}` : ''}`] }; }
-
 export async function searchEvidenceForUrl(url: string): Promise<SiteSnapshot | null> { const h = hostname(url); if (!h) return null; const hits = await providerSearch(`site:${h}`); const exact = hits.find((hit) => hostname(hit.url) === h); return exact ? searchSnapshot(exact) : null; }
 export async function getMainSnapshot(storeUrl: string) { try { return await fetchSite(storeUrl); } catch { const fallback = await searchEvidenceForUrl(storeUrl); if (fallback) return fallback; throw new Error('تعذّر الوصول إلى الموقع ولم نجد أدلة عامة مفهرسة كافية عنه.'); } }
-
 async function directoryCompetitorHits(brand: string): Promise<SearchHit[]> { const { discoverDirectoryNames } = await import('./competitor-directories.server'); const directory = await discoverDirectoryNames(brand); const hits: SearchHit[] = []; for (const item of directory.slice(0, 8)) { const results = await providerSearch(`"${item.name}" official website`); const best = results.find((hit) => { const h = hostname(hit.url); return h && !blocked(h) && !editorialHost(h) && !pathLooksEditorial(hit.url); }); if (best) hits.push({ ...best, source: 'directory', title: best.title || item.name, snippet: `Competitor directory (${item.source}) identified ${item.name} as a comparable company. ${best.snippet}` }); } return uniqueHits(hits); }
-
 function commercialSignals(site: SiteSnapshot) { const text = `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0, 5000)}`.toLowerCase(); return ['shop','store','buy','products','product','shoes','footwear','apparel','clothing','fashion','sportswear','electronics','mobile','grocery','marketplace','retail','ecommerce','delivery','beauty','cosmetics'].reduce((n, word) => n + (text.includes(word) ? 1 : 0), 0); }
 function editorialContent(site: SiteSnapshot) { const text = `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')}`.toLowerCase(); return /\b(news|analysis|research|strategy|strategies|guide|review|reviews|alternatives|competitors|comparison|stock|investing|financial|salary|employees|funding|ratings|rating|similar sites)\b/i.test(text); }
-
+function detectedCategoryTerms(main: SiteSnapshot) { const text = `${main.title} ${main.description} ${main.h1.join(' ')} ${main.h2.join(' ')} ${main.text.slice(0, 7000)}`.toLowerCase(); return ['shoes','footwear','apparel','clothing','fashion','beauty','cosmetics','electronics','mobile','grocery','food','ecommerce','retail','delivery','hotel','travel','booking','reservation','taxi','mobility','software','saas','platform'].filter((term) => text.includes(term)).slice(0, 4); }
 export async function discoverCompetitors(main: SiteSnapshot, explicit: string[] = []) {
-  const own = hostname(main.url);
-  const brand = likelyBrand(main);
-  const ids = brandCandidates(main);
-  const queries = [`"${brand}" competitors`, `"${brand}" alternatives`, `"${brand}" vs competitors`, `${brand} competitors alternatives`, `${ids[0] ?? brand} similar companies`, `${brand} market competitors`];
+  const own = hostname(main.url); const brand = likelyBrand(main); const ids = brandCandidates(main); const categories = detectedCategoryTerms(main);
+  const baseQueries = [`"${brand}" competitors`, `"${brand}" alternatives`, `"${brand}" vs competitors`, `${brand} competitors alternatives`, `${ids[0] ?? brand} similar companies`, `${brand} market competitors`];
+  const categoryQueries = categories.flatMap((term) => [`"${brand}" ${term} competitors`, `"${brand}" ${term} brands like`, `${term} brands similar to "${brand}"`, `best ${term} brands like "${brand}"`]);
+  const queries = [...baseQueries, ...categoryQueries].slice(0, 14);
   const [groups, directoryHits] = await Promise.all([Promise.all(queries.map(providerSearch)), directoryCompetitorHits(brand)]);
-  const queryGroups = groups.map((group) => uniqueHits(group));
-  const hits = uniqueHits([...queryGroups.flat(), ...directoryHits]);
-  const candidates = candidateDomains(hits, own, explicit);
-  const evidenceByHost = new Map<string, SearchHit>();
-  for (const hit of hits) { const h = hostname(hit.url); if (!evidenceByHost.has(h) || hit.source === 'directory') evidenceByHost.set(h, hit); }
-  const queryPresence = new Map<string, number>();
-  for (const group of queryGroups) { for (const hit of group) { const h = hostname(hit.url); if (h) queryPresence.set(h, (queryPresence.get(h) ?? 0) + 1); } }
-  const explicitHosts = new Set(explicit.map(hostname).filter(Boolean));
-  const relevance = /competitor|alternative|similar|rival|footwear|apparel|retail|ecommerce|sport|fashion|shopping|marketplace/i;
-  const qualified = candidates.filter((candidate) => {
-    const h = hostname(candidate);
-    const hit = evidenceByHost.get(h);
-    return explicitHosts.has(h) || (queryPresence.get(h) ?? 0) >= 2 || Boolean(hit && relevance.test(`${hit.title} ${hit.snippet}`));
-  }).slice(0, 24);
+  const queryGroups = groups.map((group) => uniqueHits(group)); const hits = uniqueHits([...queryGroups.flat(), ...directoryHits]); const candidates = candidateDomains(hits, own, explicit);
+  const evidenceByHost = new Map<string, SearchHit>(); for (const hit of hits) { const h = hostname(hit.url); if (!evidenceByHost.has(h) || hit.source === 'directory') evidenceByHost.set(h, hit); }
+  const queryPresence = new Map<string, number>(); for (const group of queryGroups) for (const hit of group) { const h = hostname(hit.url); if (h) queryPresence.set(h, (queryPresence.get(h) ?? 0) + 1); }
+  const explicitHosts = new Set(explicit.map(hostname).filter(Boolean)); const relevance = /competitor|alternative|similar|rival|footwear|apparel|retail|ecommerce|sport|fashion|shopping|marketplace|shoe|sneaker/i;
+  const qualified = candidates.filter((candidate) => { const h = hostname(candidate); const hit = evidenceByHost.get(h); const present = queryPresence.get(h) ?? 0; const relevant = Boolean(hit && relevance.test(`${hit.title} ${hit.snippet}`)); return explicitHosts.has(h) || present >= 2 || (present >= 1 && relevant); }).slice(0, 32);
   const sites: SiteSnapshot[] = [];
-  for (const candidate of qualified) {
-    const h = hostname(candidate);
-    try {
-      const site = await fetchSite(candidate);
-      const hit = evidenceByHost.get(h);
-      const isExplicit = explicitHosts.has(h);
-      const commercial = commercialSignals(site);
-      const editorial = editorialContent(site) || editorialHost(h);
-      if (!isExplicit && (editorial && commercial < 3 || commercial < 2)) continue;
-      sites.push(site);
-    } catch {
-      const hit = evidenceByHost.get(h) ?? hits.find((x) => hostname(x.url) === h);
-      if (hit && (explicitHosts.has(h) || (queryPresence.get(h) ?? 0) >= 2) && !pathLooksEditorial(hit.url)) sites.push(searchSnapshot(hit));
-    }
-  }
-  const ranked = sites.map((site) => {
-    const h = hostname(site.url);
-    const hit = evidenceByHost.get(h);
-    const text = `${hit?.title ?? ''} ${hit?.snippet ?? ''}`.toLowerCase();
-    const queryBonus = Math.min(queryPresence.get(h) ?? 0, 5) * 4;
-    const directoryBonus = hit?.source === 'directory' ? 6 : 0;
-    const directBonus = site.sourceType === 'direct-site' ? 4 : 0;
-    const commercialBonus = Math.min(commercialSignals(site), 6);
-    const relevanceBonus = ['competitor','alternative','similar','rival','footwear','apparel','retail','ecommerce','sport','fashion','shopping','marketplace'].reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0);
-    const editorialPenalty = editorialContent(site) || editorialHost(h) ? 12 : 0;
-    const noisePenalty = /stock|financial|investor|news|analysis|research|funding|salary|employees|ratings/i.test(text) && !/shop|store|retail|ecommerce|product/i.test(text) ? 12 : 0;
-    return { site, score: queryBonus + directoryBonus + directBonus + commercialBonus + relevanceBonus - editorialPenalty - noisePenalty };
-  }).sort((a, b) => b.score - a.score).slice(0, 10);
+  for (const candidate of qualified) { const h = hostname(candidate); try { const site = await fetchSite(candidate); const isExplicit = explicitHosts.has(h); const commercial = commercialSignals(site); const editorial = editorialContent(site) || editorialHost(h); if (!isExplicit && (editorial && commercial < 3 || commercial < 2)) continue; sites.push(site); } catch { const hit = evidenceByHost.get(h) ?? hits.find((x) => hostname(x.url) === h); if (hit && (explicitHosts.has(h) || (queryPresence.get(h) ?? 0) >= 1) && !pathLooksEditorial(hit.url)) sites.push(searchSnapshot(hit)); } }
+  const ranked = sites.map((site) => { const h = hostname(site.url); const hit = evidenceByHost.get(h); const text = `${hit?.title ?? ''} ${hit?.snippet ?? ''}`.toLowerCase(); const queryBonus = Math.min(queryPresence.get(h) ?? 0, 5) * 4; const directoryBonus = hit?.source === 'directory' ? 6 : 0; const directBonus = site.sourceType === 'direct-site' ? 4 : 0; const commercialBonus = Math.min(commercialSignals(site), 6); const relevanceBonus = ['competitor','alternative','similar','rival','footwear','apparel','retail','ecommerce','sport','fashion','shopping','marketplace','shoe','sneaker'].reduce((sum, word) => sum + (text.includes(word) ? 1 : 0), 0); const editorialPenalty = editorialContent(site) || editorialHost(h) ? 12 : 0; const noisePenalty = /stock|financial|investor|news|analysis|research|funding|salary|employees|ratings/i.test(text) && !/shop|store|retail|ecommerce|product/i.test(text) ? 12 : 0; return { site, score: queryBonus + directoryBonus + directBonus + commercialBonus + relevanceBonus - editorialPenalty - noisePenalty }; }).sort((a, b) => b.score - a.score).slice(0, 10);
   return ranked.map((item) => item.site);
 }
-
 export function buildPrompt(main: SiteSnapshot, competitors: SiteSnapshot[]) { return ['COANTO competitive decision intelligence.', `Target evidence: ${JSON.stringify(main)}`, `Candidate evidence: ${JSON.stringify(competitors)}`, 'Analyze only from supplied evidence plus your web research.', 'Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.', 'Each competitor must include name, url, why, evidence, sourceUrls.', 'Never invent prices, revenue, market share, percentages, dates, or financial impact.', 'Clearly distinguish facts, inference, recommendation, and unknown.'].join('\n'); }
 export function parseJsonBlock(text: string) { const start = text.indexOf('{'); const end = text.lastIndexOf('}'); if (start < 0 || end <= start) throw new Error('AI returned no JSON object.'); return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>; }

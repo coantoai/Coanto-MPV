@@ -1,0 +1,50 @@
+name: Gemini Decision Test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/lib/decision.functions.ts'
+      - 'src/routes/decision.tsx'
+      - 'src/lib/memory.functions.ts'
+      - 'src/routes/memory.tsx'
+      - 'src/lib/monitoring.functions.ts'
+      - 'src/routes/monitoring.tsx'
+      - 'src/lib/business-intelligence.functions.ts'
+      - 'src/routes/business-intelligence.tsx'
+      - 'src/routeTree.gen.ts'
+      - 'supabase/migrations/**'
+      - 'src/lib/ai-engine.server.ts'
+      - 'src/lib/ai-output.server.ts'
+      - 'scripts/**'
+      - '.github/workflows/gemini-decision-test.yml'
+
+jobs:
+  gemini-decision-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.Gemini_coanto_one }}
+      GEMINI_MODEL: gemini-3.1-flash-lite
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Run Gemini-backed tests
+        run: npm run test:ai
+      - name: Run real public-site monitoring smoke
+        run: npm run test:monitoring-live
+      - name: Build
+        run: npm run build
