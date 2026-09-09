@@ -75,8 +75,12 @@ function canonicalContent(content: string) {
   return clean(content).replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ');
 }
 
-function hashEvidence(input: { kind: EvidenceKind; sourceUrl: string; observedAt: string; content: string }) {
-  const canonical = [input.kind, input.sourceUrl, input.observedAt, canonicalContent(input.content)].join('\n');
+function hashContent(content: string) {
+  return createHash('sha256').update(canonicalContent(content), 'utf8').digest('hex');
+}
+
+function hashIdentity(input: { kind: EvidenceKind; sourceUrl: string; observedAt: string; contentHash: string }) {
+  const canonical = [input.kind, input.sourceUrl, input.observedAt, input.contentHash].join('\n');
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
@@ -92,16 +96,16 @@ export function validateEvidenceInput(input: EvidenceInput) {
   return { url: sourceUrl, observedAt, retrievedAt };
 }
 
-/** Creates immutable, content-addressed evidence with explicit provenance. */
+/** Creates immutable evidence with a stable content hash and observation identity. */
 export function createEvidence(input: EvidenceInput): EvidenceRecord {
   const valid = validateEvidenceInput(input);
   const sourceUrl = valid.url;
   const content = canonicalContent(input.content);
-  const contentHash = hashEvidence({ kind: input.kind, sourceUrl, observedAt: valid.observedAt, content });
+  const contentHash = hashContent(content);
   const sourceDomain = domainFromUrl(sourceUrl);
   if (!sourceDomain) throw new Error('Evidence source URL has no usable domain.');
 
-  const id = `ev_${contentHash.slice(0, 24)}`;
+  const id = `ev_${hashIdentity({ kind: input.kind, sourceUrl, observedAt: valid.observedAt, contentHash }).slice(0, 24)}`;
   return {
     id,
     kind: input.kind,
@@ -119,11 +123,11 @@ export function createEvidence(input: EvidenceInput): EvidenceRecord {
   };
 }
 
-/** Deduplicates evidence by stable content identity, never by display text alone. */
+/** Deduplicates identical evidence observations by stable observation identity. */
 export function dedupeEvidence(records: EvidenceRecord[]) {
   const seen = new Map<string, EvidenceRecord>();
   for (const record of records) {
-    const key = record.contentHash || record.id;
+    const key = record.id;
     if (!seen.has(key)) seen.set(key, record);
   }
   return [...seen.values()];
