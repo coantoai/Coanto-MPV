@@ -12,6 +12,7 @@ const migrationsToApply = [
   { version: '20260910212500', name: 'monitoring-event-intelligence', file: '../migrations/20260910212500_monitoring_event_intelligence.sql' },
   { version: '20260910221000', name: 'decision-engine', file: '../migrations/20260910221000_decision_engine.sql' },
   { version: '20260910222000', name: 'decision-run-tracking', file: '../migrations/20260910222000_decision_run_tracking.sql' },
+  { version: '20260910224000', name: 'alerts-reports', file: '../migrations/20260910224000_alerts_reports.sql' },
 ] as const;
 
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
@@ -44,7 +45,7 @@ async function assertTable(table:string){const rows=await request(`/api/database
 
 async function main() {
   await request('/api/deployments/metadata'); console.log('INSFORGE_AUTH_OK'); await applyMigrations();
-  for (const table of ['coanto_evidence','coanto_claims','coanto_evidence_graph_snapshots','analysis_evidence_links','analyses','memory_items','monitoring_targets','monitoring_snapshots','monitoring_events','business_metrics','business_insights','decisions','business_contexts','competitors']) await assertTable(table);
+  for (const table of ['coanto_evidence','coanto_claims','coanto_evidence_graph_snapshots','analysis_evidence_links','analyses','memory_items','monitoring_targets','monitoring_snapshots','monitoring_events','business_metrics','business_insights','decisions','alert_preferences','alerts','executive_reports','business_contexts','competitors']) await assertTable(table);
   console.log('INSFORGE_SCHEMA_OK');
 
   const probeId=`insforge_probe_${Date.now()}`;
@@ -82,7 +83,16 @@ async function main() {
 
   const decisionKey=`dec_ci_${Date.now()}`;
   const decisionProbe=await request('/api/database/records/decisions',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{user_id:tenantId,decision_key:decisionKey,source_insight_id:insightId,source_analysis_id:analysisId,category:'pricing',title:'CI pricing decision',action:'Review unit economics before changing price.',rationale:'Evidence-gated CI decision.',priority:'high',score:86,confidence:0.9,evidence_count:1,evidence:[{eventId,targetId}],status:'proposed',intelligence_run_key:runKey}])}) as Array<{id?:string;user_id?:string;decision_key?:string;score?:number}>;
-  if(!decisionProbe?.[0]?.id||decisionProbe[0]?.user_id!==tenantId||decisionProbe[0]?.decision_key!==decisionKey||decisionProbe[0]?.score!==86)throw new Error('InsForge decision persistence probe failed.');
+  const decisionId=decisionProbe?.[0]?.id;if(!decisionId||decisionProbe[0]?.user_id!==tenantId||decisionProbe[0]?.decision_key!==decisionKey||decisionProbe[0]?.score!==86)throw new Error('InsForge decision persistence probe failed.');
+
+  const preferencesProbe=await request('/api/database/records/alert_preferences',{method:'POST',headers:{Prefer:'return=representation,resolution=merge-duplicates'},body:JSON.stringify([{user_id:tenantId,minimum_change_score:70,include_decisions:true,include_intelligence:true,digest_frequency:'weekly'}])}) as Array<{user_id?:string;minimum_change_score?:number}>;
+  if(preferencesProbe?.[0]?.user_id!==tenantId||preferencesProbe[0]?.minimum_change_score!==70)throw new Error('InsForge alert preferences persistence probe failed.');
+  const alertKey=`monitoring:${eventId}`;
+  const alertProbe=await request('/api/database/records/alerts',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{user_id:tenantId,alert_key:alertKey,kind:'monitoring',severity:'high',title:'CI competitor price alert',summary:'Price changed from $100 to $120.',source_id:eventId,source_type:'price-change',score:95,confidence:0.9,evidence:[{eventId,targetId}],occurred_at:new Date().toISOString()}])}) as Array<{id?:string;user_id?:string;alert_key?:string;score?:number}>;
+  const alertId=alertProbe?.[0]?.id;if(!alertId||alertProbe[0]?.user_id!==tenantId||alertProbe[0]?.alert_key!==alertKey||alertProbe[0]?.score!==95)throw new Error('InsForge alert persistence probe failed.');
+  const reportKey=`competitive-digest:ci:${Date.now()}`;
+  const reportProbe=await request('/api/database/records/executive_reports',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{user_id:tenantId,report_key:reportKey,report_type:'competitive-digest',period_start:new Date(Date.now()-7*24*3600000).toISOString(),period_end:new Date().toISOString(),title:'CI Executive Digest',summary:'Evidence-linked competitive digest.',payload:{health:{competitors:1,changes:1,evidenceLinks:1},topDecision:{id:decisionId}}}])}) as Array<{id?:string;user_id?:string;report_key?:string}>;
+  const reportId=reportProbe?.[0]?.id;if(!reportId||reportProbe[0]?.user_id!==tenantId||reportProbe[0]?.report_key!==reportKey)throw new Error('InsForge executive report persistence probe failed.');
 
   const tenantRows=await request(`/api/database/records/analyses?user_id=eq.${encodeURIComponent(tenantId)}&select=id,user_id&limit=5`) as Array<{user_id?:string}>;
   if(!Array.isArray(tenantRows)||tenantRows.some(row=>row.user_id!==tenantId))throw new Error('InsForge tenant isolation query probe failed.');
@@ -94,8 +104,15 @@ async function main() {
   if(!Array.isArray(monitoringRows)||monitoringRows.length!==1||monitoringRows[0]?.user_id!==tenantId||monitoringRows[0]?.change_score!==95)throw new Error('InsForge monitoring tenant isolation probe failed.');
   const decisionRows=await request(`/api/database/records/decisions?user_id=eq.${encodeURIComponent(tenantId)}&decision_key=eq.${encodeURIComponent(decisionKey)}&select=user_id,decision_key,score,status&limit=5`) as Array<{user_id?:string;decision_key?:string;score?:number;status?:string}>;
   if(!Array.isArray(decisionRows)||decisionRows.length!==1||decisionRows[0]?.user_id!==tenantId||decisionRows[0]?.score!==86||decisionRows[0]?.status!=='proposed')throw new Error('InsForge decision tenant isolation probe failed.');
+  const alertRows=await request(`/api/database/records/alerts?user_id=eq.${encodeURIComponent(tenantId)}&alert_key=eq.${encodeURIComponent(alertKey)}&select=user_id,alert_key,score,read_at&limit=5`) as Array<{user_id?:string;alert_key?:string;score?:number}>;
+  if(!Array.isArray(alertRows)||alertRows.length!==1||alertRows[0]?.user_id!==tenantId||alertRows[0]?.score!==95)throw new Error('InsForge alert tenant isolation probe failed.');
+  const reportRows=await request(`/api/database/records/executive_reports?user_id=eq.${encodeURIComponent(tenantId)}&report_key=eq.${encodeURIComponent(reportKey)}&select=user_id,report_key&limit=5`) as Array<{user_id?:string;report_key?:string}>;
+  if(!Array.isArray(reportRows)||reportRows.length!==1||reportRows[0]?.user_id!==tenantId||reportRows[0]?.report_key!==reportKey)throw new Error('InsForge executive report tenant isolation probe failed.');
   console.log('INSFORGE_READ_WRITE_OK');
 
+  await request(`/api/database/records/executive_reports?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
+  await request(`/api/database/records/alerts?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
+  await request(`/api/database/records/alert_preferences?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
   await request(`/api/database/records/decisions?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
   await request(`/api/database/records/business_insights?user_id=eq.${encodeURIComponent(tenantId)}&run_key=eq.${encodeURIComponent(runKey)}`,{method:'DELETE'});
   await request(`/api/database/records/monitoring_events?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
