@@ -1,0 +1,26 @@
+name: COANTO Monitoring Scheduler
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitoring-cron:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run scheduled monitoring
+        env:
+          COANTO_APP_URL: ${{ secrets.COANTO_APP_URL }}
+          COANTO_CRON_SECRET: ${{ secrets.COANTO_CRON_SECRET }}
+        run: |
+          if [ -z "$COANTO_APP_URL" ] || [ -z "$COANTO_CRON_SECRET" ]; then
+            echo "Monitoring scheduler skipped: COANTO_APP_URL or COANTO_CRON_SECRET is not configured."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+            -H "x-cron-secret: $COANTO_CRON_SECRET" \
+            "$COANTO_APP_URL/api/monitoring-cron"
