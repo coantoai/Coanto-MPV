@@ -37,6 +37,19 @@ export const createMonitoringTarget=createServerFn({method:"POST"}).middleware([
   if(error)throw new Error(error.message);return mapTarget(row);
 });
 
+export const addDiscoveredCompetitorToMonitoring=createServerFn({method:"POST"}).middleware([requireAuth]).inputValidator((i:{competitorId:string;intervalHours?:number})=>i).handler(async({data,context})=>{
+  const db=getDatabase();
+  const {data:competitor,error:competitorError}=await db.from("competitors").select("id,name,url,verification_status").eq("id",data.competitorId).eq("user_id",context.userId).maybeSingle();
+  if(competitorError)throw new Error(competitorError.message);if(!competitor)throw new Error("المنافس غير موجود.");
+  if(String(competitor.verification_status)==="lead")throw new Error("لا يمكن مراقبة منافس غير متحقق منه.");
+  const safeUrl=String(competitor.url);
+  const {data:existing,error:existingError}=await db.from("monitoring_targets").select("id,name,url,interval_hours,active,last_checked_at,next_check_at,created_at").eq("user_id",context.userId).eq("url",safeUrl).maybeSingle();
+  if(existingError)throw new Error(existingError.message);if(existing)return mapTarget(existing);
+  const hours=Math.min(Math.max(Math.round(data.intervalHours??24),1),720);
+  const {data:row,error}=await db.from("monitoring_targets").insert({user_id:context.userId,name:String(competitor.name),url:safeUrl,interval_hours:hours,active:true,next_check_at:new Date().toISOString()}).select("id,name,url,interval_hours,active,last_checked_at,next_check_at,created_at").single();
+  if(error)throw new Error(error.message);return mapTarget(row);
+});
+
 export const deleteMonitoringTarget=createServerFn({method:"POST"}).middleware([requireAuth]).inputValidator((i:{id:string})=>i).handler(async({data,context})=>{
   const db=getDatabase();
   const {error:snapshotsError}=await db.from("monitoring_snapshots").delete().eq("target_id",data.id).eq("user_id",context.userId);if(snapshotsError)throw new Error(snapshotsError.message);
