@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { requireAuth } from '@/lib/auth-middleware';
 import { getDatabase } from '@/lib/database.server';
+import { getBusinessContext } from '@/lib/business-context.server';
 import { buildCompetitiveIntelligence, type IntelligenceEvent } from '@/lib/intelligence-engine.server';
 import type { Json } from '@/lib/json';
 
@@ -37,7 +38,8 @@ export const refreshBusinessIntelligence=createServerFn({method:'POST'}).middlew
   const periodEnd=now.toISOString();
   const runKey=`30d:${now.toISOString().slice(0,10)}`;
 
-  const [{data:analyses,error:aError},{data:events,error:eError},{data:memory,error:mError}]=await Promise.all([
+  const [businessContext,{data:analyses,error:aError},{data:events,error:eError},{data:memory,error:mError}]=await Promise.all([
+    getBusinessContext(context.userId),
     db.from('analyses').select('id,store_url,created_at,result_json').eq('user_id',context.userId).gte('created_at',since).order('created_at',{ascending:false}).limit(500),
     db.from('monitoring_events').select('id,event_type,severity,change_score,title,summary,evidence,detected_at,target_id').eq('user_id',context.userId).gte('detected_at',since).order('detected_at',{ascending:false}).limit(500),
     db.from('memory_items').select('id,kind,created_at').eq('user_id',context.userId).gte('created_at',since).limit(500),
@@ -48,18 +50,29 @@ export const refreshBusinessIntelligence=createServerFn({method:'POST'}).middlew
   const eventRows=events??[];
   const memoryRows=memory??[];
   const decisions=memoryRows.filter((item:any)=>item.kind==='decision');
-  const intelligenceEvents:IntelligenceEvent[]=eventRows.map((item:any)=>({
-    id:String(item.id),
-    eventType:String(item.event_type),
-    severity:String(item.severity),
-    changeScore:Number(item.change_score??(item.event_type==='error'?100:50)),
-    title:String(item.title??''),
-    summary:String(item.summary??''),
-    evidence:item.evidence??{},
-    detectedAt:String(item.detected_at),
-    targetId:String(item.target_id),
-  }));
-  const intelligence=buildCompetitiveIntelligence({events:intelligenceEvents,analysesCount:analysisRows.length,memoryItemsCount:memoryRows.length,decisionsCount:decisions.length});
+  const intelligenceEvents:IntelligenceEvent[]=eventRows.map((item:any)=>{
+    const eventType=String(item.event_type);
+    const persistedScore=Number(item.change_score??0);
+    const legacyScore=persistedScore>0?persistedScore:eventType==='error'?100:eventType==='change'?50:45;
+    return {
+      id:String(item.id),
+      eventType,
+      severity:String(item.severity),
+      changeScore:legacyScore,
+      title:String(item.title??''),
+      summary:String(item.summary??''),
+      evidence:item.evidence??{},
+      detectedAt:String(item.detected_at),
+      targetId:String(item.target_id),
+    };
+  });
+  const intelligence=buildCompetitiveIntelligence({
+    events:intelligenceEvents,
+    analysesCount:analysisRows.length,
+    memoryItemsCount:memoryRows.length,
+    decisionsCount:decisions.length,
+    businessContext:businessContext?{businessName:businessContext.businessName,primaryMarket:businessContext.primaryMarket,competitiveGoals:businessContext.competitiveGoals}:undefined,
+  });
 
   const {error:oldMetricError}=await db.from('business_metrics').delete().eq('user_id',context.userId).eq('run_key',runKey);if(oldMetricError)throw new Error(oldMetricError.message);
   const {error:oldInsightError}=await db.from('business_insights').delete().eq('user_id',context.userId).eq('run_key',runKey);if(oldInsightError)throw new Error(oldInsightError.message);
@@ -73,7 +86,7 @@ export const refreshBusinessIntelligence=createServerFn({method:'POST'}).middlew
     period_start:since,
     period_end:periodEnd,
     source_analysis_id:sourceAnalysisId,
-    metadata:{derivedFrom:'verified-monitoring+analyses+memory',windowDays:30,engine:'coanto-intelligence-v1'},
+    metadata:{derivedFrom:'verified-monitoring+analyses+memory',windowDays:30,engine:'coanto-intelligence-v2',businessContextUsed:Boolean(businessContext)},
     run_key:runKey,
   })));
   if(metricError)throw new Error(metricError.message);
@@ -101,6 +114,7 @@ export const refreshBusinessIntelligence=createServerFn({method:'POST'}).middlew
     events:eventRows.length,
     changes:intelligence.meaningfulEvents.length,
     highPriority:intelligence.highPriority.length,
+    patterns:intelligence.patterns.length,
     averageChangeScore:intelligence.averageChangeScore,
     errors:intelligence.errors.length,
     memoryItems:memoryRows.length,
