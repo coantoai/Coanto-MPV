@@ -26,12 +26,16 @@ export function accessTokenFromRequest(request: Request): string | null {
   return cookieValue(request, AUTH_COOKIE);
 }
 
-export function authCookie(token: string): string {
-  return `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`;
+function secureCookie(request: Request): boolean {
+  try { return new URL(request.url).protocol === 'https:'; } catch { return true; }
 }
 
-export function clearAuthCookie(): string {
-  return `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+export function authCookie(request: Request, token: string): string {
+  return `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}`;
+}
+
+export function clearAuthCookie(request: Request): string {
+  return `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}; Max-Age=0`;
 }
 
 export async function authenticateRequest(request: Request): Promise<AuthPrincipal | null> {
