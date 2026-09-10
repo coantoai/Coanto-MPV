@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 const baseUrl = (process.env.INSFORGE_URL ?? '').trim().replace(/\/$/, '');
 const apiKey = (process.env.INSFORGE_API_KEY ?? '').trim();
 const migrationVersion = '20260909073000';
-const migrationName = 'coanto_evidence';
+const migrationName = 'coanto-evidence';
 
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
 if (!apiKey) throw new Error('INSFORGE_API_KEY is missing.');
