@@ -25,10 +25,10 @@ if(alerts[0]?.score!==91&&alerts[0]?.score!==93)throw new Error('Alert priority 
 
 const digest=buildExecutiveDigest({businessName:'COANTO Test',periodStart:'2026-09-03T00:00:00.000Z',periodEnd:'2026-09-10T14:00:00.000Z',competitors:4,activeMonitoring:3,monitoringChanges:monitoring,decisions,intelligence,evidenceLinks:7,unreadAlerts:2});
 if(!digest.reportKey.startsWith('competitive-digest:'))throw new Error('Digest key missing.');
-if(!digest.summary.includes('1 تغيّر تنافسي'))throw new Error(`Unexpected digest summary: ${digest.summary}`);
+if(!digest.summary.includes('2 تغيّر تنافسي'))throw new Error(`Unexpected digest summary: ${digest.summary}`);
 const payload=digest.payload as Record<string,unknown>;
 const health=payload['health'] as Record<string,unknown>;
-if(health['evidenceLinks']!==7||health['actionableDecisions']!==1)throw new Error('Digest health metrics failed.');
+if(health['evidenceLinks']!==7||health['actionableDecisions']!==1||health['changes']!==2)throw new Error('Digest health metrics failed.');
 const topDecision=payload['topDecision'] as Record<string,unknown>;
 if(topDecision['id']!=='d1')throw new Error('Digest top decision evidence gate failed.');
 console.log('ALERTS_REPORTS_SMOKE_OK',JSON.stringify({alerts:alerts.length,reportKey:digest.reportKey}));
