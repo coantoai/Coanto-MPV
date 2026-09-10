@@ -25,6 +25,8 @@ export type MonitoringChange = {
   changed: boolean;
   eventType: MonitoringEventType;
   severity: 'low' | 'medium' | 'high';
+  score: number;
+  fingerprint: string;
   title: string;
   summary: string;
   evidence: Record<string, unknown>;
@@ -54,36 +56,49 @@ function extractOffers(text: string) {
     /\b\d{1,2}%\s*(?:off|discount)\b/gi,
     /\b(?:sale|discount|promo|promotion|limited offer|free shipping|buy one get one|bogo)\b/gi,
   ];
-  return [...new Set(patterns.flatMap((pattern)=>text.match(pattern)??[]).map((item)=>normalize(item).toLowerCase()))].slice(0, 40);
+  return [...new Set(patterns.flatMap((pattern) => text.match(pattern) ?? []).map((item) => normalize(item).toLowerCase()))].slice(0, 40);
 }
 
 function symmetricDifference(a: string[], b: string[]) {
-  const left=new Set(a),right=new Set(b);
-  return [...a.filter((item)=>!right.has(item)),...b.filter((item)=>!left.has(item))];
+  const left = new Set(a), right = new Set(b);
+  return [...a.filter((item) => !right.has(item)), ...b.filter((item) => !left.has(item))];
 }
 
 function classifyBusinessChange(previous: MonitoringSnapshotInput, current: MonitoringSnapshotInput) {
-  const beforeText=`${previous.title} ${previous.description} ${previous.h1.join(' ')} ${previous.h2.join(' ')} ${previous.textExcerpt}`;
-  const afterText=`${current.title} ${current.description} ${current.h1.join(' ')} ${current.h2.join(' ')} ${current.textExcerpt}`;
-  const beforePrices=extractPrices(beforeText),afterPrices=extractPrices(afterText);
-  const priceDelta=symmetricDifference(beforePrices,afterPrices);
-  if(priceDelta.length){
-    return {eventType:'price-change' as const,severity:'high' as const,title:'تغيّر في الأسعار',summary:'تم رصد إضافة أو إزالة قيمة سعرية على صفحة المنافس.',details:{pricesBefore:beforePrices,pricesAfter:afterPrices,priceDelta}};
+  const beforeText = `${previous.title} ${previous.description} ${previous.h1.join(' ')} ${previous.h2.join(' ')} ${previous.textExcerpt}`;
+  const afterText = `${current.title} ${current.description} ${current.h1.join(' ')} ${current.h2.join(' ')} ${current.textExcerpt}`;
+  const beforePrices = extractPrices(beforeText), afterPrices = extractPrices(afterText);
+  const priceDelta = symmetricDifference(beforePrices, afterPrices);
+  if (priceDelta.length) {
+    return { eventType: 'price-change' as const, baseScore: 95, title: 'تغيّر في الأسعار', summary: 'تم رصد إضافة أو إزالة قيمة سعرية على صفحة المنافس.', details: { pricesBefore: beforePrices, pricesAfter: afterPrices, priceDelta } };
   }
-  const beforeOffers=extractOffers(beforeText),afterOffers=extractOffers(afterText);
-  const offerDelta=symmetricDifference(beforeOffers,afterOffers);
-  if(offerDelta.length){
-    return {eventType:'offer-change' as const,severity:'high' as const,title:'تغيّر في العرض الترويجي',summary:'تم رصد تغيير في خصم أو عرض ترويجي للمنافس.',details:{offersBefore:beforeOffers,offersAfter:afterOffers,offerDelta}};
+  const beforeOffers = extractOffers(beforeText), afterOffers = extractOffers(afterText);
+  const offerDelta = symmetricDifference(beforeOffers, afterOffers);
+  if (offerDelta.length) {
+    return { eventType: 'offer-change' as const, baseScore: 90, title: 'تغيّر في العرض الترويجي', summary: 'تم رصد تغيير في خصم أو عرض ترويجي للمنافس.', details: { offersBefore: beforeOffers, offersAfter: afterOffers, offerDelta } };
   }
-  const hDelta=symmetricDifference([...previous.h1,...previous.h2],[...current.h1,...current.h2]);
-  const productTerms=/\b(product|products|collection|collections|new arrivals|launch|shop)\b/i;
-  if(hDelta.some((item)=>productTerms.test(item))){
-    return {eventType:'product-change' as const,severity:'medium' as const,title:'تغيّر في المنتجات أو التشكيلة',summary:'تم رصد تغيير هيكلي مرتبط بمنتجات أو مجموعات المنافس.',details:{headingDelta:hDelta.slice(0,20)}};
+  const hDelta = symmetricDifference([...previous.h1, ...previous.h2], [...current.h1, ...current.h2]);
+  const productTerms = /\b(product|products|collection|collections|new arrivals|launch|shop)\b/i;
+  if (hDelta.some((item) => productTerms.test(item))) {
+    return { eventType: 'product-change' as const, baseScore: 82, title: 'تغيّر في المنتجات أو التشكيلة', summary: 'تم رصد تغيير هيكلي مرتبط بمنتجات أو مجموعات المنافس.', details: { headingDelta: hDelta.slice(0, 20) } };
   }
-  if(normalize(previous.description)!==normalize(current.description)){
-    return {eventType:'messaging-change' as const,severity:'medium' as const,title:'تغيّر في الرسالة التسويقية',summary:'تم رصد تغيير في وصف أو تموضع رسالة المنافس.',details:{descriptionBefore:previous.description,descriptionAfter:current.description}};
+  if (normalize(previous.description) !== normalize(current.description)) {
+    return { eventType: 'messaging-change' as const, baseScore: 75, title: 'تغيّر في الرسالة التسويقية', summary: 'تم رصد تغيير في وصف أو تموضع رسالة المنافس.', details: { descriptionBefore: previous.description, descriptionAfter: current.description } };
   }
   return null;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function severityFromScore(score: number): MonitoringChange['severity'] {
+  return score >= 85 ? 'high' : score >= 60 ? 'medium' : 'low';
+}
+
+function fingerprint(eventType: MonitoringEventType, previousHash: string, currentHash: string) {
+  if (eventType === 'no-change') return `chg_${currentHash.slice(0, 24)}`;
+  return `chg_${createHash('sha256').update(`${eventType}\n${previousHash}\n${currentHash}`, 'utf8').digest('hex').slice(0, 24)}`;
 }
 
 export async function captureMonitoringSnapshot(url: string): Promise<MonitoringSnapshotInput> {
@@ -109,33 +124,42 @@ export async function captureMonitoringSnapshot(url: string): Promise<Monitoring
 }
 
 export function detectMonitoringChange(previous: MonitoringSnapshotInput | null, current: MonitoringSnapshotInput): MonitoringChange {
-  if (!previous) return { changed: false, eventType: 'no-change', severity: 'low', title: 'تم إنشاء خط الأساس', summary: 'تم حفظ أول نسخة مرجعية للمنافس.', evidence: { currentHash: current.contentHash } };
-  if (previous.contentHash === current.contentHash) return { changed: false, eventType: 'no-change', severity: 'low', title: 'لا تغيير', summary: 'لم يتغير المحتوى منذ آخر فحص.', evidence: { previousHash: previous.contentHash, currentHash: current.contentHash } };
+  if (!previous) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', current.contentHash, current.contentHash), title: 'تم إنشاء خط الأساس', summary: 'تم حفظ أول نسخة مرجعية للمنافس.', evidence: { currentHash: current.contentHash } };
+  if (previous.contentHash === current.contentHash) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', previous.contentHash, current.contentHash), title: 'لا تغيير', summary: 'لم يتغير المحتوى منذ آخر فحص.', evidence: { previousHash: previous.contentHash, currentHash: current.contentHash } };
 
   const titleChanged = normalize(previous.title) !== normalize(current.title);
   const structureChanged = JSON.stringify(previous.h1) !== JSON.stringify(current.h1) || JSON.stringify(previous.h2) !== JSON.stringify(current.h2);
   const textSimilarity = similarity(previous.textExcerpt, current.textExcerpt);
-  const business=classifyBusinessChange(previous,current);
+  const business = classifyBusinessChange(previous, current);
 
   if (!business && !titleChanged && !structureChanged && textSimilarity >= 0.97) {
     return {
       changed: false,
       eventType: 'no-change',
       severity: 'low',
+      score: 0,
+      fingerprint: fingerprint('no-change', previous.contentHash, current.contentHash),
       title: 'تغيير ضوضائي تم تجاهله',
       summary: 'تغيّر الـhash لكن المحتوى الدلالي بقي شبه مطابق؛ لم يتم إنشاء تنبيه.',
       evidence: { previousHash: previous.contentHash, currentHash: current.contentHash, textSimilarity: Number(textSimilarity.toFixed(4)), noiseSuppressed: true },
     };
   }
 
-  const severity: MonitoringChange['severity'] = business?.severity ?? (titleChanged || textSimilarity < 0.55 ? 'high' : structureChanged || textSimilarity < 0.8 ? 'medium' : 'low');
   const eventType: MonitoringEventType = business?.eventType ?? (titleChanged ? 'title-change' : structureChanged ? 'structure-change' : 'content-change');
-  const title=business?.title ?? (titleChanged ? 'تغيّر عنوان المنافس' : structureChanged ? 'تغيّر هيكل صفحة المنافس' : 'تغيّر محتوى المنافس');
+  const baseScore = business?.baseScore ?? (titleChanged ? 70 : structureChanged ? 60 : 45);
+  const magnitudeBonus = textSimilarity < 0.4 ? 10 : textSimilarity < 0.7 ? 5 : 0;
+  const score = clampScore(baseScore + magnitudeBonus);
+  const severity = severityFromScore(score);
+  const title = business?.title ?? (titleChanged ? 'تغيّر عنوان المنافس' : structureChanged ? 'تغيّر هيكل صفحة المنافس' : 'تغيّر محتوى المنافس');
   const changedParts = [titleChanged ? 'العنوان' : '', structureChanged ? 'هيكل الصفحة' : '', textSimilarity < 0.98 ? 'المحتوى' : ''].filter(Boolean);
+  const changeFingerprint = fingerprint(eventType, previous.contentHash, current.contentHash);
+
   return {
     changed: true,
     eventType,
     severity,
+    score,
+    fingerprint: changeFingerprint,
     title,
     summary: business?.summary ?? (changedParts.length ? `تم رصد تغيير في ${changedParts.join(' و')}.` : 'تم رصد تغيير موثّق في الصفحة.'),
     evidence: {
@@ -146,7 +170,9 @@ export function detectMonitoringChange(previous: MonitoringSnapshotInput | null,
       titleBefore: previous.title,
       titleAfter: current.title,
       textSimilarity: Number(textSimilarity.toFixed(4)),
-      ...(business?.details??{}),
+      score,
+      fingerprint: changeFingerprint,
+      ...(business?.details ?? {}),
     },
   };
 }
