@@ -50,6 +50,22 @@ const migration = await readFile(join(root, 'migrations', '20260910182000_busine
 if (!migration.includes('business_contexts')) violations.push('business context migration missing table');
 if (!migration.includes('user_id text primary key')) violations.push('business context migration missing tenant uniqueness');
 
+const monitoringRunner = await readFile(join(coreDir, 'monitoring-runner.server.ts'), 'utf8');
+if (!monitoringRunner.includes('detectMonitoringChange')) violations.push('monitoring runner: deterministic change engine missing');
+if (!monitoringRunner.includes("from('monitoring_snapshots')")) violations.push('monitoring runner: durable snapshots missing');
+if (!monitoringRunner.includes("from('monitoring_events')")) violations.push('monitoring runner: durable events missing');
+if (!monitoringRunner.includes('change_key') || !monitoringRunner.includes('change_score')) violations.push('monitoring runner: dedupe/significance persistence missing');
+
+const monitoringFunctions = await readFile(join(coreDir, 'monitoring.functions.ts'), 'utf8');
+if (!monitoringFunctions.includes('executeMonitoringCheck')) violations.push('monitoring functions: shared monitoring runner missing');
+const monitoringCron = await readFile(join(apiDir, 'monitoring-cron.ts'), 'utf8');
+if (!monitoringCron.includes('executeMonitoringCheck')) violations.push('monitoring cron: shared monitoring runner missing');
+
+const monitoringMigration = await readFile(join(root, 'migrations', '20260910212500_monitoring_event_intelligence.sql'), 'utf8');
+if (!monitoringMigration.includes('change_key')) violations.push('monitoring event migration: change_key missing');
+if (!monitoringMigration.includes('change_score')) violations.push('monitoring event migration: change_score missing');
+if (!monitoringMigration.includes('previous_snapshot_id') || !monitoringMigration.includes('current_snapshot_id')) violations.push('monitoring event migration: snapshot lineage missing');
+
 if (violations.length) {
   console.error('ARCHITECTURE_SMOKE_FAILED');
   for (const violation of violations) console.error(`- ${violation}`);
