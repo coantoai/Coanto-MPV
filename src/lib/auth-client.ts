@@ -41,7 +41,7 @@ export const clientAuth = {
 
   async signUp(email: string, password: string, redirectTo?: string): Promise<AuthResult> {
     const payload: Record<string, string> = { action: 'signup', email: email.trim(), password };
-    if (redirectTo) payload.redirectTo = redirectTo;
+    if (redirectTo) payload['redirectTo'] = redirectTo;
     const response = await fetch('/api/auth', {
       method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
     });
