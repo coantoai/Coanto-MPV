@@ -2,6 +2,7 @@ import { createAdminClient } from '@insforge/sdk';
 import type { ClaimRecord } from './claim-engine.server';
 import type { EvidenceRecord } from './evidence-engine.server';
 import type { EvidenceGraph } from './evidence-graph.server';
+import { getServerConfig } from './config.server';
 
 export type CoantoEvidenceStore = {
   insertEvidence(records: EvidenceRecord[]): Promise<unknown>;
@@ -9,18 +10,9 @@ export type CoantoEvidenceStore = {
   insertGraph(snapshot: EvidenceGraph & { analysisId: string }): Promise<unknown>;
 };
 
-function getConfig() {
-  const baseUrl = process.env['INSFORGE_URL'] || process.env['INSFORGE_BASE_URL'];
-  const apiKey = process.env['INSFORGE_API_KEY'];
-  if (!baseUrl || !apiKey) {
-    throw new Error('InsForge persistence requires INSFORGE_URL and INSFORGE_API_KEY.');
-  }
-  return { baseUrl, apiKey };
-}
-
 function client() {
-  const config = getConfig();
-  return createAdminClient({ baseUrl: config.baseUrl, apiKey: config.apiKey });
+  const { insforge } = getServerConfig();
+  return createAdminClient({ baseUrl: insforge.url, apiKey: insforge.apiKey });
 }
 
 export function createInsForgeEvidenceStore(): CoantoEvidenceStore {
