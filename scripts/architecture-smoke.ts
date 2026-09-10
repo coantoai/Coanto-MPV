@@ -96,6 +96,28 @@ if (!decisionMigration.includes('create table if not exists public.decisions')) 
 if (!decisionMigration.includes('unique (user_id, decision_key)')) violations.push('decision migration: tenant decision uniqueness missing');
 if (!decisionMigration.includes('evidence_count') || !decisionMigration.includes('evidence jsonb')) violations.push('decision migration: evidence lineage missing');
 
+const alertsEngine = await readFile(join(coreDir, 'alerts-reports.server.ts'), 'utf8');
+if (!alertsEngine.includes('buildAlertCandidates')) violations.push('alerts engine: deterministic alert builder missing');
+if (!alertsEngine.includes('buildExecutiveDigest')) violations.push('reports engine: executive digest builder missing');
+if (!alertsEngine.includes('evidenceCount < 1')) violations.push('alerts engine: decision evidence gate missing');
+if (!alertsEngine.includes('!evidence.length')) violations.push('alerts engine: intelligence evidence gate missing');
+
+const alertsFunctions = await readFile(join(coreDir, 'alerts-reports.functions.ts'), 'utf8');
+if (!alertsFunctions.includes('requireAuth')) violations.push('alerts functions: authentication boundary missing');
+if (!alertsFunctions.includes("from('alerts')") || !alertsFunctions.includes("from('executive_reports')")) violations.push('alerts/reports: durable persistence missing');
+if (!alertsFunctions.includes("eq('user_id', context.userId)")) violations.push('alerts/reports: tenant scoping missing');
+if (!alertsFunctions.includes('refreshAlerts') || !alertsFunctions.includes('generateExecutiveReport')) violations.push('alerts/reports: refresh or report boundary missing');
+
+const alertsMigration = await readFile(join(root, 'migrations', '20260910224000_alerts_reports.sql'), 'utf8');
+if (!alertsMigration.includes('create table if not exists public.alerts')) violations.push('alerts migration: alerts table missing');
+if (!alertsMigration.includes('create table if not exists public.executive_reports')) violations.push('alerts migration: executive reports table missing');
+if (!alertsMigration.includes('unique (user_id, alert_key)') || !alertsMigration.includes('unique (user_id, report_key)')) violations.push('alerts migration: tenant dedupe constraints missing');
+
+const alertsRoute = await readFile(join(root, 'src', 'routes', 'alerts.tsx'), 'utf8');
+const reportsRoute = await readFile(join(root, 'src', 'routes', 'reports.tsx'), 'utf8');
+if (!alertsRoute.includes('refreshAlerts') || !alertsRoute.includes('markAlertRead')) violations.push('alerts route: operational alert controls missing');
+if (!reportsRoute.includes('generateExecutiveReport')) violations.push('reports route: report generation control missing');
+
 if (violations.length) {
   console.error('ARCHITECTURE_SMOKE_FAILED');
   for (const violation of violations) console.error(`- ${violation}`);
