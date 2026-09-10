@@ -66,6 +66,16 @@ if (!monitoringMigration.includes('change_key')) violations.push('monitoring eve
 if (!monitoringMigration.includes('change_score')) violations.push('monitoring event migration: change_score missing');
 if (!monitoringMigration.includes('previous_snapshot_id') || !monitoringMigration.includes('current_snapshot_id')) violations.push('monitoring event migration: snapshot lineage missing');
 
+const intelligenceEngine = await readFile(join(coreDir, 'intelligence-engine.server.ts'), 'utf8');
+if (!intelligenceEngine.includes('buildCompetitiveIntelligence')) violations.push('intelligence engine: deterministic builder missing');
+if (!intelligenceEngine.includes('price-change') || !intelligenceEngine.includes('offer-change') || !intelligenceEngine.includes('product-change') || !intelligenceEngine.includes('messaging-change')) violations.push('intelligence engine: commercial signal classes missing');
+if (!intelligenceEngine.includes('eventEvidence')) violations.push('intelligence engine: evidence lineage missing');
+
+const businessIntelligence = await readFile(join(coreDir, 'business-intelligence.functions.ts'), 'utf8');
+if (!businessIntelligence.includes('buildCompetitiveIntelligence')) violations.push('business intelligence: shared intelligence engine missing');
+if (!businessIntelligence.includes('change_score')) violations.push('business intelligence: significance score ingestion missing');
+if (!businessIntelligence.includes("from('business_metrics')") || !businessIntelligence.includes("from('business_insights')")) violations.push('business intelligence: durable persistence missing');
+
 if (violations.length) {
   console.error('ARCHITECTURE_SMOKE_FAILED');
   for (const violation of violations) console.error(`- ${violation}`);
