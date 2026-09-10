@@ -1,4 +1,5 @@
-import { supabaseAdmin } from '@/integrations/supabase/client.server';
+import { createAdminClient } from '@insforge/sdk';
+import { getServerConfig } from './config.server';
 
 export type SaveAnalysisInput = {
   userId: string;
@@ -6,17 +7,20 @@ export type SaveAnalysisInput = {
   result: Record<string, unknown>;
 };
 
-/**
- * Server-only analysis persistence boundary.
- * Transitional implementation is Supabase-backed; callers must not depend on the vendor.
- * This adapter will move to InsForge during the persistence migration.
- */
+function database() {
+  const { insforge } = getServerConfig();
+  return createAdminClient({ baseUrl: insforge.url, apiKey: insforge.apiKey }).database;
+}
+
+/** Server-only, tenant-scoped analysis persistence. */
 export async function saveAnalysis(input: SaveAnalysisInput): Promise<{ id: string }> {
-  const { data, error } = await supabaseAdmin
+  if (!input.userId.trim()) throw new Error('Analysis persistence requires an authenticated user.');
+  const { data, error } = await database()
     .from('analyses')
-    .insert({ user_id: input.userId, store_url: input.storeUrl, result_json: input.result as never })
+    .insert({ user_id: input.userId, store_url: input.storeUrl, result_json: input.result })
     .select('id')
     .single();
   if (error) throw new Error(`Analysis persistence failed: ${error.message}`);
-  return { id: data.id };
+  if (!data?.id) throw new Error('Analysis persistence failed: missing record id.');
+  return { id: String(data.id) };
 }
