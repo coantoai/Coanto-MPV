@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { clientAuth } from "@/lib/auth-client";
 
 function AuthPage() {
@@ -10,13 +10,23 @@ function AuthPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  async function continueAfterAuth() {
+    const response = await fetch('/api/business-context', { credentials: 'same-origin', cache: 'no-store' });
+    if (response.status === 401) return nav({ to: '/auth' });
+    if (!response.ok) return nav({ to: '/' });
+    const body = await response.json() as { completed?: boolean };
+    return nav({ to: body.completed ? '/' : '/onboarding' });
+  }
+
   useEffect(() => {
     void clientAuth
       .getSession()
       .then((session) => {
-        if (session) void nav({ to: "/" });
+        if (session) void continueAfterAuth();
       })
       .catch(() => undefined);
+    // continueAfterAuth intentionally uses the stable router navigate function.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav]);
 
   async function submit(e: FormEvent) {
@@ -28,7 +38,7 @@ function AuthPage() {
         const result = await clientAuth.signUp(
           email,
           password,
-          `${window.location.origin}/`,
+          `${window.location.origin}/auth`,
         );
         if (!result.session) {
           setError("تم إنشاء الحساب. تحقق من بريدك ثم سجّل الدخول.");
@@ -37,7 +47,7 @@ function AuthPage() {
       } else {
         await clientAuth.signIn(email, password);
       }
-      await nav({ to: "/" });
+      await continueAfterAuth();
     } catch (e) {
       setError(e instanceof Error ? e.message : "تعذّر إتمام العملية");
     } finally {
