@@ -8,7 +8,7 @@ COANTO is a Competitive Decision Intelligence platform. The product pipeline is:
 
 AI output is never treated as evidence by itself. Material claims must remain traceable to collected evidence or explicit external sources.
 
-## Target architecture
+## Current architecture
 
 ```text
 Browser / COANTO UI
@@ -24,7 +24,7 @@ Domain services
         ↓
 InsForge
   ├─ primary database / persistence
-  ├─ authentication target
+  ├─ authentication
   └─ backend platform services
         ↓
 External capabilities
@@ -45,10 +45,10 @@ Server routes authenticate, validate input, invoke domain services, and serializ
 Files under `src/lib` own evidence, claims, trust, monitoring, intelligence, and decisions. Provider-specific code must stay behind narrow adapters.
 
 ### Persistence
-InsForge is the primary persistence target. Persistence access must go through server-only modules. The application must not silently fall back to in-memory/demo persistence in production.
+InsForge is the primary persistence platform. Application data access is server-only and tenant-scoped by authenticated `userId`. Core application data must never silently fall back to in-memory/demo persistence in production.
 
 ### Authentication
-InsForge is the target authentication platform. Existing Supabase authentication code is transitional technical debt and must not expand. It will be replaced in the dedicated InsForge/auth migration step after the application boundary is stabilized.
+InsForge is the authentication platform. Browser code authenticates through COANTO's same-origin `/api/auth` boundary. The InsForge access token is stored in an HttpOnly, SameSite=Lax cookie and is not exposed to application JavaScript. Server routes validate the session against InsForge before trusting the user identity.
 
 ### AI
 AI providers interpret supplied evidence and may perform explicitly enabled research. Their responses are untrusted input until validated against the COANTO output contract. Provider failures, quota failures, and malformed responses must fail explicitly and must not create fabricated intelligence.
@@ -62,24 +62,32 @@ AI providers interpret supplied evidence and may perform explicitly enabled rese
 5. Demo/sample data is isolated from production data paths.
 6. Monitoring jobs are authenticated and idempotent where practical.
 7. AI/model choice is configuration, not product logic.
-8. CI gates typecheck, build, lint, contract tests, smoke tests, and integration tests that are not blocked by unrelated external quota exhaustion.
-9. Database schema changes are versioned migrations.
-10. Architectural transitions are explicit; two backends must not become permanent parallel sources of truth.
+8. CI gates typecheck, build, lint, architecture, contract, smoke, runtime, and InsForge integration checks. External AI quota exhaustion must not block unrelated platform development.
+9. Database schema changes are versioned migrations; applied migrations are never rewritten as a substitute for a new migration.
+10. InsForge is the single application backend source of truth; no parallel legacy backend is permitted in runtime code.
 
-## Current transition risks
+## Completed backend migration
 
-- Supabase authentication remains in the codebase while InsForge is the target backend/auth platform.
-- Gemini live tests can be blocked by external free-tier quota even when application code is healthy.
-- Several domain services predate the final persistence architecture and must be reviewed for demo/in-memory fallbacks before production launch.
-- Provider and environment configuration has historically drifted from runtime defaults; `.env.example` and code must remain synchronized.
+- Central server configuration validates InsForge project configuration.
+- Analysis history, memory, monitoring, scheduled monitoring, business intelligence, decisions, evidence, claims, and evidence-graph persistence use InsForge.
+- Application schema is versioned under `migrations/` and exercised by the InsForge integration test.
+- Tenant-sensitive reads, writes, updates, and deletes carry the authenticated `userId` boundary where applicable.
+- Supabase runtime clients, generated types, environment variables, and package dependency have been retired.
+- Architecture CI rejects reintroduction of Supabase runtime coupling.
 
-## Near-term migration order
+## Current risks / next hardening
 
-1. Stabilize configuration, repository documentation, and server boundaries.
-2. Complete InsForge persistence and tenant-safe schema.
-3. Move authentication to InsForge and retire Supabase code/dependency.
-4. Harden onboarding and business-context persistence.
-5. Harden evidence acquisition, provenance, monitoring, and change detection.
-6. Integrate AI live E2E once quota/billing is available, without blocking unrelated platform development.
+- Gemini live E2E can be blocked by provider quota independently of platform health.
+- End-user InsForge authentication still requires production E2E coverage with a dedicated test identity before launch.
+- Domain services must continue to be reviewed for provider timeouts, idempotency, data retention, and explicit failure handling as features expand.
+- Any future database authorization/RLS layer must complement, not replace, server-side tenant scoping.
 
-This document is the architecture source of truth. Changes that materially alter these boundaries should update this file in the same change.
+## Near-term order
+
+1. Keep InsForge backend/auth/persistence and architecture checks green.
+2. Harden onboarding and persisted business context.
+3. Harden evidence acquisition, provenance, monitoring, and change detection.
+4. Expand intelligence and decision workflows.
+5. Integrate AI live E2E once quota/billing is available, without blocking unrelated platform development.
+
+This document is the architecture source of truth. Changes that materially alter these boundaries must update this file in the same change.
