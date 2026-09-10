@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireAuth } from "@/lib/auth-middleware";
 
 type Row = { id: string; store_url: string; created_at: string; result_json: unknown };
 
@@ -134,7 +134,7 @@ export function buildDecision(row: Row): Decision {
 }
 
 export const getLatestDecision = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAuth])
   .handler(async ({ context }): Promise<Decision | null> => {
     const { data, error } = await context.supabase
       .from("analyses")
