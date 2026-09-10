@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireAuth } from "@/lib/auth-middleware.server";
+import { requireAuth } from "@/lib/auth-middleware";
 import type { Json } from "@/integrations/supabase/types";
 
 export type BusinessInsight={id:string;title:string;summary:string;category:string;impact:string;confidence:number;evidence:Json[];recommendation:string|null;createdAt:string};
