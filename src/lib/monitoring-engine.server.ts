@@ -63,6 +63,16 @@ export function detectMonitoringChange(previous: MonitoringSnapshotInput | null,
   const titleChanged = normalize(previous.title) !== normalize(current.title);
   const structureChanged = JSON.stringify(previous.h1) !== JSON.stringify(current.h1) || JSON.stringify(previous.h2) !== JSON.stringify(current.h2);
   const textSimilarity = similarity(previous.textExcerpt, current.textExcerpt);
+  if (!titleChanged && !structureChanged && textSimilarity >= 0.97) {
+    return {
+      changed: false,
+      eventType: 'no-change',
+      severity: 'low',
+      title: 'تغيير ضوضائي تم تجاهله',
+      summary: 'تغيّر الـhash لكن المحتوى الدلالي بقي شبه مطابق؛ لم يتم إنشاء تنبيه.',
+      evidence: { previousHash: previous.contentHash, currentHash: current.contentHash, textSimilarity: Number(textSimilarity.toFixed(4)), noiseSuppressed: true },
+    };
+  }
   const severity: MonitoringChange['severity'] = titleChanged || textSimilarity < 0.55 ? 'high' : structureChanged || textSimilarity < 0.8 ? 'medium' : 'low';
   const eventType: MonitoringChange['eventType'] = titleChanged ? 'title-change' : structureChanged ? 'structure-change' : 'content-change';
   const changedParts = [titleChanged ? 'العنوان' : '', structureChanged ? 'هيكل الصفحة' : '', textSimilarity < 0.98 ? 'المحتوى' : ''].filter(Boolean);
