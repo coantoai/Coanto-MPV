@@ -8,6 +8,9 @@ const migrationName = 'coanto_evidence';
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
 if (!apiKey) throw new Error('INSFORGE_API_KEY is missing.');
 if (!/^https?:\/\//i.test(baseUrl)) throw new Error('INSFORGE_URL must be an HTTP(S) URL.');
+if (!apiKey.startsWith('ik_')) {
+  throw new Error('INSFORGE_API_KEY is not an InsForge project API key (expected ik_ prefix).');
+}
 
 async function request(path: string, init: RequestInit = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -36,8 +39,9 @@ async function request(path: string, init: RequestInit = {}) {
 }
 
 async function main() {
-  const session = await request('/api/auth/admin/sessions/current');
-  if (!session || typeof session !== 'object') throw new Error('InsForge admin session response was invalid.');
+  // /api/auth/admin/sessions/current expects an admin JWT session, not a project API key.
+  // Test the project API key through an endpoint protected by verifyAdmin instead.
+  await request('/api/deployments/metadata');
   console.log('INSFORGE_AUTH_OK');
 
   const migrations = (await request('/api/database/migrations')) as { migrations?: Array<{ version?: string }> };
