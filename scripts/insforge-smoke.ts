@@ -7,6 +7,7 @@ const migrationsToApply = [
   { version: '20260910160500', name: 'coanto-app-data', file: '../migrations/20260910160500_coanto_app_data.sql' },
   { version: '20260910182000', name: 'business-context', file: '../migrations/20260910182000_business_context.sql' },
   { version: '20260910190000', name: 'competitor-discovery', file: '../migrations/20260910190000_competitor_discovery.sql' },
+  { version: '20260910204500', name: 'analysis-evidence-links', file: '../migrations/20260910204500_analysis_evidence_links.sql' },
 ] as const;
 
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
@@ -39,16 +40,19 @@ async function assertTable(table:string){const rows=await request(`/api/database
 
 async function main() {
   await request('/api/deployments/metadata'); console.log('INSFORGE_AUTH_OK'); await applyMigrations();
-  for (const table of ['coanto_evidence','coanto_claims','coanto_evidence_graph_snapshots','analyses','memory_items','monitoring_targets','monitoring_snapshots','monitoring_events','business_metrics','business_insights','business_contexts','competitors']) await assertTable(table);
+  for (const table of ['coanto_evidence','coanto_claims','coanto_evidence_graph_snapshots','analysis_evidence_links','analyses','memory_items','monitoring_targets','monitoring_snapshots','monitoring_events','business_metrics','business_insights','business_contexts','competitors']) await assertTable(table);
   console.log('INSFORGE_SCHEMA_OK');
 
   const probeId=`insforge_probe_${Date.now()}`;
-  const evidenceProbe=await request('/api/database/records/coanto_evidence',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{id:probeId,kind:'calculation',source_url:'https://example.com/insforge-probe',source_domain:'example.com',source_group:'coanto-ci-probe',observed_at:new Date().toISOString(),retrieved_at:new Date().toISOString(),content:'COANTO InsForge connectivity probe.',content_hash:'ci-probe',status:'UNVERIFIED',metadata:{probe:true,source:'github-actions'}}])}) as Array<{id?:string}>;
+  const evidenceProbe=await request('/api/database/records/coanto_evidence',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{id:probeId,kind:'calculation',source_url:'https://example.com/insforge-probe',source_domain:'example.com',source_group:'coanto-ci-probe',observed_at:new Date().toISOString(),retrieved_at:new Date().toISOString(),content:'COANTO InsForge connectivity probe.',content_hash:'a'.repeat(64),status:'VERIFIED',metadata:{probe:true,source:'github-actions'}}])}) as Array<{id?:string}>;
   if(!Array.isArray(evidenceProbe)||!evidenceProbe.some(row=>row?.id===probeId))throw new Error('InsForge evidence persistence probe failed.');
 
   const tenantId=`ci-tenant-${Date.now()}`;
   const analysisProbe=await request('/api/database/records/analyses',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{user_id:tenantId,store_url:'https://example.com',result_json:{probe:true}}])}) as Array<{id?:string}>;
   const analysisId=analysisProbe?.[0]?.id;if(!analysisId)throw new Error('InsForge analysis persistence probe failed.');
+
+  const ledgerProbe=await request('/api/database/records/analysis_evidence_links',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{user_id:tenantId,analysis_id:analysisId,evidence_id:probeId,role:'baseline'}])}) as Array<{user_id?:string;analysis_id?:string;evidence_id?:string}>;
+  if(!Array.isArray(ledgerProbe)||ledgerProbe[0]?.user_id!==tenantId||ledgerProbe[0]?.analysis_id!==analysisId||ledgerProbe[0]?.evidence_id!==probeId)throw new Error('InsForge analysis evidence ledger probe failed.');
 
   const contextProbe=await request('/api/database/records/business_contexts',{method:'POST',headers:{Prefer:'return=representation,resolution=merge-duplicates'},body:JSON.stringify([{user_id:tenantId,business_name:'COANTO CI Shop',website_url:'https://example.com/',industry:'ecommerce',business_model:'ecommerce',company_stage:'growing',primary_market:'Lebanon',target_markets:['Lebanon'],target_customer:'Online shoppers',value_proposition:'Verified competitive intelligence',products_services:['Commerce'],competitive_goals:['competitor-discovery'],known_competitors:[],preferred_language:'ar',currency:'USD',onboarding_completed_at:new Date().toISOString()}])}) as Array<{user_id?:string}>;
   if(!Array.isArray(contextProbe)||contextProbe[0]?.user_id!==tenantId)throw new Error('InsForge business context persistence probe failed.');
@@ -58,12 +62,15 @@ async function main() {
 
   const tenantRows=await request(`/api/database/records/analyses?user_id=eq.${encodeURIComponent(tenantId)}&select=id,user_id&limit=5`) as Array<{user_id?:string}>;
   if(!Array.isArray(tenantRows)||tenantRows.some(row=>row.user_id!==tenantId))throw new Error('InsForge tenant isolation query probe failed.');
+  const ledgerRows=await request(`/api/database/records/analysis_evidence_links?user_id=eq.${encodeURIComponent(tenantId)}&analysis_id=eq.${encodeURIComponent(analysisId)}&select=user_id,analysis_id,evidence_id&limit=5`) as Array<{user_id?:string;evidence_id?:string}>;
+  if(!Array.isArray(ledgerRows)||ledgerRows.length!==1||ledgerRows[0]?.user_id!==tenantId||ledgerRows[0]?.evidence_id!==probeId)throw new Error('InsForge evidence ledger tenant isolation probe failed.');
   const competitorRows=await request(`/api/database/records/competitors?user_id=eq.${encodeURIComponent(tenantId)}&select=user_id,domain&limit=5`) as Array<{user_id?:string}>;
   if(!Array.isArray(competitorRows)||competitorRows.length!==1||competitorRows[0]?.user_id!==tenantId)throw new Error('InsForge competitor tenant isolation probe failed.');
   console.log('INSFORGE_READ_WRITE_OK');
 
   await request(`/api/database/records/competitors?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
   await request(`/api/database/records/business_contexts?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
+  await request(`/api/database/records/analysis_evidence_links?user_id=eq.${encodeURIComponent(tenantId)}`,{method:'DELETE'});
   await request(`/api/database/records/analyses?id=eq.${encodeURIComponent(analysisId)}`,{method:'DELETE'});
   await request(`/api/database/records/coanto_evidence?id=eq.${encodeURIComponent(probeId)}`,{method:'DELETE'});
   console.log('INSFORGE_DELETE_OK'); console.log('INSFORGE_INTEGRATION_OK');
