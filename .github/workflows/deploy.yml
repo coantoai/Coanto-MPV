@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live]
+        check: [typecheck, lint, smoke, architecture, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -31,6 +31,7 @@ jobs:
             typecheck) bun run typecheck ;;
             lint) bun run lint ;;
             smoke) bun run test:smoke ;;
+            architecture) bun run test:architecture ;;
             evidence) bun run test:evidence ;;
             evidence-collector) bun run test:evidence-collector ;;
             claim) bun run test:claim ;;
@@ -42,26 +43,23 @@ jobs:
           esac
 
   insforge-integration:
-    name: InsForge integration (optional)
+    name: InsForge integration
     runs-on: ubuntu-latest
     needs: verify
     env:
       INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
       INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
     steps:
-      - name: Skip optional integration when not configured
-        if: ${{ env.INSFORGE_URL == '' || env.INSFORGE_API_KEY == '' }}
-        run: echo "InsForge integration skipped; current COANTO persistence uses the configured application database."
+      - name: Require InsForge configuration
+        run: |
+          [ -n "$INSFORGE_URL" ] || (echo "INSFORGE_URL=missing" && exit 1)
+          [ -n "$INSFORGE_API_KEY" ] || (echo "INSFORGE_API_KEY=missing" && exit 1)
       - uses: actions/checkout@v5
-        if: ${{ env.INSFORGE_URL != '' && env.INSFORGE_API_KEY != '' }}
       - uses: oven-sh/setup-bun@v2
-        if: ${{ env.INSFORGE_URL != '' && env.INSFORGE_API_KEY != '' }}
         with:
           bun-version: latest
       - run: bun install
-        if: ${{ env.INSFORGE_URL != '' && env.INSFORGE_API_KEY != '' }}
       - name: Apply COANTO schema and verify real persistence
-        if: ${{ env.INSFORGE_URL != '' && env.INSFORGE_API_KEY != '' }}
         run: bun run test:insforge
 
   runtime-smoke:
@@ -168,7 +166,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
