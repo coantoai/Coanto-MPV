@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live]
+        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -41,7 +41,7 @@ jobs:
             research-proof) bun run test:research-proof ;;
             ai-contract) bun run test:ai-contract ;;
             build) bun run build ;;
-            monitoring-live) bun run test:monitoring-live ;;
+            monitoring-live) bun run test:monitoring-live ;;\n            monitoring-engine) bun run test:monitoring-engine ;;
           esac
 
   insforge-integration:
