@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { acquireSiteSnapshot } from '../src/lib/acquisition.server.ts';
 import { fetchSiteViaApify, getApifyRuntimeConfig } from '../src/lib/apify.server.ts';
 
 const originalFetch=globalThis.fetch;
@@ -36,7 +38,27 @@ try{
   if(authorization!=='Bearer apify_test_secret_never_log')throw new Error('Apify Authorization header missing.');
   if(input['maxCrawlDepth']!==0||input['maxCrawlPages']!==1||input['summarize']!==false||input['respectRobotsTxtFile']!==true)throw new Error('Apify cost/safety bounds failed.');
   if(page.title!=='Example Store'||page.h1[0]!=='Example Store'||page.h2[0]!=='New Arrivals'||!page.text.includes('$120'))throw new Error('Apify dataset mapping failed.');
-  console.log('APIFY_SMOKE_OK',JSON.stringify({actorId:config.actorId,mode:config.mode,maxPages:input['maxCrawlPages'],summarize:input['summarize']}));
+
+  let privateRejected=false;
+  try{await acquireSiteSnapshot('http://127.0.0.1/internal');}catch{privateRejected=true;}
+  if(!privateRejected)throw new Error('Acquisition SSRF gate failed for private target.');
+
+  const [acquisition,evidenceCollector,monitoringEngine,monitoringRunner,migration,envExample]=await Promise.all([
+    readFile(new URL('../src/lib/acquisition.server.ts',import.meta.url),'utf8'),
+    readFile(new URL('../src/lib/evidence-collector.server.ts',import.meta.url),'utf8'),
+    readFile(new URL('../src/lib/monitoring-engine.server.ts',import.meta.url),'utf8'),
+    readFile(new URL('../src/lib/monitoring-runner.server.ts',import.meta.url),'utf8'),
+    readFile(new URL('../migrations/20260910230000_apify_acquisition.sql',import.meta.url),'utf8'),
+    readFile(new URL('../.env.example',import.meta.url),'utf8'),
+  ]);
+  if(!acquisition.includes('validateTargetUrl')||!acquisition.includes("mode === 'preferred'"))throw new Error('Acquisition policy boundary missing.');
+  if(!evidenceCollector.includes('acquireSiteSnapshot')||!evidenceCollector.includes('acquisitionProvider'))throw new Error('Evidence collector is not wired to acquisition provenance.');
+  if(!monitoringEngine.includes('acquireSiteSnapshot')||!monitoringEngine.includes('currentAcquisitionProvider'))throw new Error('Monitoring engine acquisition provenance missing.');
+  if(!monitoringRunner.includes('acquisition_provider'))throw new Error('Monitoring persistence acquisition provenance missing.');
+  if(!migration.includes('acquisition_provider')||!migration.includes("'direct','apify'"))throw new Error('Apify provenance migration missing.');
+  if(!envExample.includes('APIFY_TOKEN=')||!envExample.includes('APIFY_MODE=fallback'))throw new Error('Apify environment contract missing.');
+
+  console.log('APIFY_SMOKE_OK',JSON.stringify({actorId:config.actorId,mode:config.mode,maxPages:input['maxCrawlPages'],summarize:input['summarize'],privateTargetRejected:privateRejected}));
 }finally{
   globalThis.fetch=originalFetch;
   if(originalToken===undefined)delete process.env['APIFY_TOKEN'];else process.env['APIFY_TOKEN']=originalToken;
