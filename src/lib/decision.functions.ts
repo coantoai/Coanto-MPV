@@ -23,7 +23,6 @@ export type Decision = {
   score: number;
   evidenceCount: number;
   evidenceBasis: string[];
-  evidence: Array<Record<string, unknown>>;
   status: 'proposed' | 'accepted' | 'dismissed' | 'completed';
   intelligenceRunKey: string | null;
 };
@@ -60,7 +59,6 @@ function mapDecisionRow(row: any, storeUrl: string): Decision {
     score: Number(row.score ?? 0),
     evidenceCount: Number(row.evidence_count ?? evidence.length),
     evidenceBasis: evidenceLabels(evidence),
-    evidence,
     status: row.status as Decision['status'],
     intelligenceRunKey: row.intelligence_run_key ? String(row.intelligence_run_key) : null,
   };
@@ -76,7 +74,7 @@ export function buildDecision(row:LegacyAnalysisRow):Decision{
   const metadata=obj(result['metadata']);const evidenceCount=Math.max(0,num(metadata['evidenceCount']||metadata['sourceCount']));
   const basis=[...arr(result['trust']).map(item=>text(item['detail']||item['title'])).filter(Boolean),...arr(result['signals']).slice(0,3).map(item=>text(item['evidence']||item['detail']||item['title'])).filter(Boolean)].slice(0,5);
   const confidence=legacyConfidence(result);const confidenceScore=confidence==='high'?0.85:confidence==='medium'?0.65:0.4;
-  return{id:row.id,decisionKey:`legacy:${row.id}`,sourceInsightId:null,sourceAnalysisId:row.id,storeUrl:row.store_url,createdAt:row.created_at,title,action,rationale,category:'legacy-analysis',priority,confidence,confidenceScore,score:priority==='critical'?95:priority==='high'?82:priority==='medium'?65:45,evidenceCount,evidenceBasis:basis,evidence:[],status:'proposed',intelligenceRunKey:null};
+  return{id:row.id,decisionKey:`legacy:${row.id}`,sourceInsightId:null,sourceAnalysisId:row.id,storeUrl:row.store_url,createdAt:row.created_at,title,action,rationale,category:'legacy-analysis',priority,confidence,confidenceScore,score:priority==='critical'?95:priority==='high'?82:priority==='medium'?65:45,evidenceCount,evidenceBasis:basis,status:'proposed',intelligenceRunKey:null};
 }
 
 async function currentStoreUrl(userId: string) {
@@ -97,7 +95,7 @@ export const refreshDecisionEngine=createServerFn({method:'POST'}).middleware([r
   const {data:allInsights,error:insightError}=await db.from('business_insights').select('id,title,summary,category,impact,confidence,evidence,recommendation,source_analysis_id,run_key,created_at').eq('user_id',context.userId).order('created_at',{ascending:false}).limit(100);
   if(insightError)throw new Error(insightError.message);
   const rows=allInsights??[];
-  if(!rows.length)return{ok:true,published:0,rejected:0,runKey:null};
+  if(!rows.length)return{ok:true,published:0,rejected:0,runKey:null,topScore:0};
   const latestRunKey=(rows[0] as any)?.run_key?String((rows[0] as any).run_key):null;
   const currentRows=latestRunKey?rows.filter((row:any)=>String(row.run_key??'')===latestRunKey):rows.slice(0,20);
   const inputs:DecisionInsightInput[]=currentRows.map((row:any)=>({
