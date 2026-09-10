@@ -32,10 +32,7 @@ function normalizeUrl(value: string, name: string): string {
   return url.toString().replace(/\/$/, '');
 }
 
-/**
- * Production configuration entrypoint.
- * Read secrets only on the server and fail fast on malformed core backend config.
- */
+/** Production configuration entrypoint. */
 export function getServerConfig(): ServerConfig {
   const insforgeUrl = normalizeUrl(required('INSFORGE_URL'), 'INSFORGE_URL');
   const insforgeApiKey = required('INSFORGE_API_KEY');
@@ -43,9 +40,10 @@ export function getServerConfig(): ServerConfig {
     throw new Error('INSFORGE_API_KEY must be an InsForge project API key (ik_...).');
   }
 
+  const cronSecret = process.env['CRON_SECRET']?.trim();
   return {
     insforge: { url: insforgeUrl, apiKey: insforgeApiKey },
     ai: { preferredProvider: process.env['AI_PROVIDER']?.trim().toLowerCase() || 'gemini' },
-    monitoring: { cronSecret: process.env['CRON_SECRET']?.trim() || undefined },
+    monitoring: cronSecret ? { cronSecret } : {},
   };
 }
