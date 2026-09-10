@@ -8,6 +8,7 @@ const migrationsToApply = [
   { version: '20260910182000', name: 'business-context', file: '../migrations/20260910182000_business_context.sql' },
   { version: '20260910190000', name: 'competitor-discovery', file: '../migrations/20260910190000_competitor_discovery.sql' },
   { version: '20260910204500', name: 'analysis-evidence-links', file: '../migrations/20260910204500_analysis_evidence_links.sql' },
+  { version: '20260910211000', name: 'monitoring-change-detection', file: '../migrations/20260910211000_monitoring_change_detection.sql' },
 ] as const;
 
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
