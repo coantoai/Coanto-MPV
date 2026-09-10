@@ -119,16 +119,12 @@ jobs:
         run: |
           [ -n "$GEMINI_API_KEY" ] && echo "GEMINI_API_KEY=present" || (echo "GEMINI_API_KEY=missing" && exit 1)
       - name: Run real Gemini end-to-end test
-        continue-on-error: true
         env:
           COANTO_E2E_URL: https://www.allbirds.com/
           AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
         run: bun run test:ai-live-e2e
-      - name: Record live AI E2E outcome
-        if: always()
-        run: echo "Live AI E2E is diagnostic-only; provider quota/rate-limit failures do not block core application verification."
 
   live-discovery:
     name: Live discovery (Gemini only)
@@ -172,6 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
