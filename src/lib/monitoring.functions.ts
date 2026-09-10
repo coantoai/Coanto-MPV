@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { requireAuth } from "@/lib/auth-middleware";
 import { getDatabase } from "@/lib/database.server";
 import { fetchSite, validateTargetUrl } from "@/lib/analyze.server";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/json";
 
 export type MonitoringTarget={id:string;name:string;url:string;intervalHours:number;active:boolean;lastCheckedAt:string|null;nextCheckAt:string|null;createdAt:string};
 export type MonitoringEvent={id:string;targetId:string;eventType:string;severity:string;title:string;summary:string;evidence:Json;detectedAt:string;acknowledgedAt:string|null};
