@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireAuth } from "@/lib/auth-middleware";
 import { getDatabase } from "@/lib/database.server";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/json";
 
 export type MemoryKind="decision"|"recommendation"|"insight"|"preference"|"note";
 export type MemoryItem={id:string;kind:MemoryKind;title:string;content:Json;sourceAnalysisId:string|null;importance:number;createdAt:string;updatedAt:string};
