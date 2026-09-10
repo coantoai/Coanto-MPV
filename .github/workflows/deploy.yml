@@ -69,6 +69,8 @@ jobs:
       - run: bun install
       - name: Apply COANTO schema and verify real persistence
         run: bun run test:insforge
+      - name: Apply and verify Apify acquisition provenance schema
+        run: bun run test:insforge-apify
 
   runtime-smoke:
     runs-on: ubuntu-latest
