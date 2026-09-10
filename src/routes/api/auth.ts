@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@insforge/sdk';
 import { getServerConfig } from '@/lib/config.server';
-import { authenticateRequest, authCookie, clearAuthCookie } from '@/lib/auth.server';
+import { accessTokenFromRequest, authenticateRequest, authCookie, clearAuthCookie } from '@/lib/auth.server';
 
 const MAX_BODY = 16_000;
 function json(body: unknown, status = 200, headers: HeadersInit = {}) {
@@ -38,18 +38,30 @@ export const Route = createFileRoute('/api/auth')({
           if (error) return json({ error: error.message || 'Sign up failed.' }, error.statusCode || 400);
           const token = data?.accessToken;
           if (!token) return json({ authenticated: false, verificationRequired: true }, 202);
-          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(token) });
+          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
         }
         if (body.action === 'signin') {
           const { data, error } = await client.auth.signInWithPassword({ email, password });
           if (error) return json({ error: error.message || 'Sign in failed.' }, error.statusCode || 401);
           const token = data?.accessToken;
           if (!token) return json({ error: 'Authentication session was not created.' }, 502);
-          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(token) });
+          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
         }
         return json({ error: 'Unsupported auth action.' }, 400);
       },
-      DELETE: async () => json({ ok: true }, 200, { 'set-cookie': clearAuthCookie() }),
+      DELETE: async ({ request }) => {
+        const token = accessTokenFromRequest(request);
+        if (token) {
+          try {
+            const { insforge } = getServerConfig();
+            const client = createClient({ baseUrl: insforge.url, accessToken: token });
+            await client.auth.signOut();
+          } catch {
+            // Cookie removal is authoritative for the local session even if remote revocation fails.
+          }
+        }
+        return json({ ok: true }, 200, { 'set-cookie': clearAuthCookie(request) });
+      },
     },
   },
 });
