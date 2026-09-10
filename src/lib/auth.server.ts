@@ -2,27 +2,34 @@ import { createClient } from '@insforge/sdk';
 import { getServerConfig } from './config.server';
 
 export const AUTH_COOKIE = 'coanto_access_token';
+const MAX_ACCESS_TOKEN_LENGTH = 8_192;
 
 export type AuthPrincipal = {
   userId: string;
   provider: 'insforge';
 };
 
+function validToken(value: string | null): string | null {
+  if (!value) return null;
+  const token = value.trim();
+  return token && token.length <= MAX_ACCESS_TOKEN_LENGTH ? token : null;
+}
+
 function cookieValue(request: Request, name: string): string | null {
   const cookie = request.headers.get('cookie') ?? '';
   for (const part of cookie.split(';')) {
     const [key, ...rest] = part.trim().split('=');
-    if (key === name) return decodeURIComponent(rest.join('='));
+    if (key === name) {
+      try { return validToken(decodeURIComponent(rest.join('='))); }
+      catch { return null; }
+    }
   }
   return null;
 }
 
 export function accessTokenFromRequest(request: Request): string | null {
   const header = request.headers.get('authorization');
-  if (header?.startsWith('Bearer ')) {
-    const token = header.slice(7).trim();
-    if (token) return token;
-  }
+  if (header?.startsWith('Bearer ')) return validToken(header.slice(7));
   return cookieValue(request, AUTH_COOKIE);
 }
 
@@ -31,7 +38,9 @@ function secureCookie(request: Request): boolean {
 }
 
 export function authCookie(request: Request, token: string): string {
-  return `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}`;
+  const safe = validToken(token);
+  if (!safe) throw new Error('Invalid authentication token.');
+  return `${AUTH_COOKIE}=${encodeURIComponent(safe)}; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}`;
 }
 
 export function clearAuthCookie(request: Request): string {
