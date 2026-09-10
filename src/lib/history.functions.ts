@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireAuth } from "@/lib/auth-middleware";
 
 export type HistoryItem = {
   id: string;
@@ -15,7 +15,7 @@ export type AnalysisPayload = {
 };
 
 export const listAnalyses = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAuth])
   .handler(async ({ context }): Promise<HistoryItem[]> => {
     const { data, error } = await context.supabase
       .from("analyses")
@@ -34,7 +34,7 @@ export const listAnalyses = createServerFn({ method: "GET" })
   });
 
 export const getAnalysis = createServerFn({ method: "GET" })
-  .middleware([requireSupabaseAuth])
+  .middleware([requireAuth])
   .inputValidator((input: { id: string }) => input)
   .handler(async ({ data, context }): Promise<AnalysisPayload> => {
     const { data: row, error } = await context.supabase
