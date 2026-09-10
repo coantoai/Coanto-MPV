@@ -5,6 +5,7 @@ const apiKey = (process.env.INSFORGE_API_KEY ?? '').trim();
 const migrationsToApply = [
   { version: '20260909073000', name: 'coanto-evidence', file: '../migrations/20260909073000_coanto_evidence.sql' },
   { version: '20260910160500', name: 'coanto-app-data', file: '../migrations/20260910160500_coanto_app_data.sql' },
+  { version: '20260910182000', name: 'business-context', file: '../migrations/20260910182000_business_context.sql' },
 ] as const;
 
 if (!baseUrl) throw new Error('INSFORGE_URL is missing.');
@@ -54,6 +55,8 @@ async function main() {
   for (const table of ['coanto_evidence','coanto_claims','coanto_evidence_graph_snapshots','analyses','memory_items','monitoring_targets','monitoring_snapshots','monitoring_events','business_metrics','business_insights']) {
     await assertTable(table);
   }
+  const contextRows = await request('/api/database/records/business_contexts?select=user_id&limit=1');
+  if (!Array.isArray(contextRows)) throw new Error('business_contexts query did not return an array.');
   console.log('INSFORGE_SCHEMA_OK');
 
   const probeId = `insforge_probe_${Date.now()}`;
@@ -71,10 +74,19 @@ async function main() {
   const analysisId = analysisProbe?.[0]?.id;
   if (!analysisId) throw new Error('InsForge analysis persistence probe failed.');
 
+  const contextProbe = await request('/api/database/records/business_contexts', {
+    method: 'POST', headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
+    body: JSON.stringify([{ user_id: tenantId, business_name: 'COANTO CI Shop', website_url: 'https://example.com/', industry: 'ecommerce', business_model: 'ecommerce', company_stage: 'growing', primary_market: 'Lebanon', target_markets: ['Lebanon'], target_customer: 'Online shoppers', value_proposition: 'Verified competitive intelligence', products_services: ['Commerce'], competitive_goals: ['competitor-discovery'], known_competitors: [], preferred_language: 'ar', currency: 'USD', onboarding_completed_at: new Date().toISOString() }]),
+  }) as Array<{ user_id?: string }>;
+  if (!Array.isArray(contextProbe) || contextProbe[0]?.user_id !== tenantId) throw new Error('InsForge business context persistence probe failed.');
+
   const tenantRows = await request(`/api/database/records/analyses?user_id=eq.${encodeURIComponent(tenantId)}&select=id,user_id&limit=5`) as Array<{ user_id?: string }>;
   if (!Array.isArray(tenantRows) || tenantRows.some((row) => row.user_id !== tenantId)) throw new Error('InsForge tenant isolation query probe failed.');
+  const contextTenantRows = await request(`/api/database/records/business_contexts?user_id=eq.${encodeURIComponent(tenantId)}&select=user_id,business_name&limit=5`) as Array<{ user_id?: string }>;
+  if (!Array.isArray(contextTenantRows) || contextTenantRows.length !== 1 || contextTenantRows[0]?.user_id !== tenantId) throw new Error('InsForge business context tenant isolation probe failed.');
   console.log('INSFORGE_READ_WRITE_OK');
 
+  await request(`/api/database/records/business_contexts?user_id=eq.${encodeURIComponent(tenantId)}`, { method: 'DELETE' });
   await request(`/api/database/records/analyses?id=eq.${encodeURIComponent(analysisId)}`, { method: 'DELETE' });
   await request(`/api/database/records/coanto_evidence?id=eq.${encodeURIComponent(probeId)}`, { method: 'DELETE' });
   console.log('INSFORGE_DELETE_OK');
