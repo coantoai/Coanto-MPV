@@ -6,7 +6,7 @@ import { acknowledgeMonitoringEvent, createMonitoringTarget, deleteMonitoringTar
 export const Route=createFileRoute("/monitoring")({component:MonitoringPage});
 
 const severityLabel=(value:string)=>value==="high"?"عالي":value==="medium"?"متوسط":"منخفض";
-const eventLabel=(value:string)=>value==="title-change"?"تغيّر عنوان":value==="structure-change"?"تغيّر هيكل":value==="content-change"?"تغيّر محتوى":value==="error"?"خطأ":"حدث";
+const eventLabel=(value:string)=>value==="price-change"?"تغيّر سعر":value==="offer-change"?"تغيّر عرض":value==="product-change"?"تغيّر منتج":value==="messaging-change"?"تغيّر رسالة":value==="title-change"?"تغيّر عنوان":value==="structure-change"?"تغيّر هيكل":value==="content-change"?"تغيّر محتوى":value==="error"?"خطأ":"حدث";
 
 function MonitoringPage(){
   const [targets,setTargets]=useState<MonitoringTarget[]>([]);
