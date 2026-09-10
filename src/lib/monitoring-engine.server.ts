@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { fetchSite, validateTargetUrl } from './analyze.server';
+import { validateTargetUrl } from './analyze.server';
+import { acquireSiteSnapshot, type AcquisitionProvider } from './acquisition.server';
 
 export type MonitoringSnapshotInput = {
   contentHash: string;
@@ -9,6 +10,7 @@ export type MonitoringSnapshotInput = {
   h2: string[];
   textExcerpt: string;
   checkedAt: string;
+  acquisitionProvider?: AcquisitionProvider;
 };
 
 export type MonitoringEventType =
@@ -104,7 +106,7 @@ function fingerprint(eventType: MonitoringEventType, previousHash: string, curre
 export async function captureMonitoringSnapshot(url: string): Promise<MonitoringSnapshotInput> {
   const validation = validateTargetUrl(url);
   if (!validation.ok || !validation.url) throw new Error(validation.reason || 'الرابط غير صالح.');
-  const site = await fetchSite(validation.url);
+  const site = await acquireSiteSnapshot(validation.url);
   const canonical = [
     normalize(site.title),
     normalize(site.description),
@@ -120,12 +122,20 @@ export async function captureMonitoringSnapshot(url: string): Promise<Monitoring
     h2: site.h2,
     textExcerpt: site.text.slice(0, 4000),
     checkedAt: new Date().toISOString(),
+    acquisitionProvider: site.acquisitionProvider,
+  };
+}
+
+function provenance(previous: MonitoringSnapshotInput | null, current: MonitoringSnapshotInput) {
+  return {
+    previousAcquisitionProvider: previous?.acquisitionProvider ?? 'direct',
+    currentAcquisitionProvider: current.acquisitionProvider ?? 'direct',
   };
 }
 
 export function detectMonitoringChange(previous: MonitoringSnapshotInput | null, current: MonitoringSnapshotInput): MonitoringChange {
-  if (!previous) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', current.contentHash, current.contentHash), title: 'تم إنشاء خط الأساس', summary: 'تم حفظ أول نسخة مرجعية للمنافس.', evidence: { currentHash: current.contentHash } };
-  if (previous.contentHash === current.contentHash) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', previous.contentHash, current.contentHash), title: 'لا تغيير', summary: 'لم يتغير المحتوى منذ آخر فحص.', evidence: { previousHash: previous.contentHash, currentHash: current.contentHash } };
+  if (!previous) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', current.contentHash, current.contentHash), title: 'تم إنشاء خط الأساس', summary: 'تم حفظ أول نسخة مرجعية للمنافس.', evidence: { currentHash: current.contentHash, ...provenance(previous, current) } };
+  if (previous.contentHash === current.contentHash) return { changed: false, eventType: 'no-change', severity: 'low', score: 0, fingerprint: fingerprint('no-change', previous.contentHash, current.contentHash), title: 'لا تغيير', summary: 'لم يتغير المحتوى منذ آخر فحص.', evidence: { previousHash: previous.contentHash, currentHash: current.contentHash, ...provenance(previous, current) } };
 
   const titleChanged = normalize(previous.title) !== normalize(current.title);
   const structureChanged = JSON.stringify(previous.h1) !== JSON.stringify(current.h1) || JSON.stringify(previous.h2) !== JSON.stringify(current.h2);
@@ -141,7 +151,7 @@ export function detectMonitoringChange(previous: MonitoringSnapshotInput | null,
       fingerprint: fingerprint('no-change', previous.contentHash, current.contentHash),
       title: 'تغيير ضوضائي تم تجاهله',
       summary: 'تغيّر الـhash لكن المحتوى الدلالي بقي شبه مطابق؛ لم يتم إنشاء تنبيه.',
-      evidence: { previousHash: previous.contentHash, currentHash: current.contentHash, textSimilarity: Number(textSimilarity.toFixed(4)), noiseSuppressed: true },
+      evidence: { previousHash: previous.contentHash, currentHash: current.contentHash, textSimilarity: Number(textSimilarity.toFixed(4)), noiseSuppressed: true, ...provenance(previous, current) },
     };
   }
 
@@ -172,6 +182,7 @@ export function detectMonitoringChange(previous: MonitoringSnapshotInput | null,
       textSimilarity: Number(textSimilarity.toFixed(4)),
       score,
       fingerprint: changeFingerprint,
+      ...provenance(previous, current),
       ...(business?.details ?? {}),
     },
   };
