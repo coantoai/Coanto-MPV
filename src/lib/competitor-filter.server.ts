@@ -10,7 +10,6 @@ const categoryGroups = [
   ['beauty','cosmetics','skincare','makeup','fragrance'],
   ['electronics','laptop','phone','mobile','computer','tech'],
   ['grocery','groceries','supermarket','food','fresh'],
-  ['marketplace','ecommerce','e-commerce','retail','store','shopping'],
   ['delivery','courier','logistics','shipping','delivery service'],
   ['hotel','hotels','accommodation','lodging','travel'],
   ['booking','reservation','reserve','tickets','flights'],
@@ -49,7 +48,7 @@ export function filterCommercialCompetitors(main: SiteSnapshot,candidates: SiteS
     if(explicitHosts.has(host))return true; if(isObviousNonCompetitor(host))return false;
     const commerce=commerceScore(site), editorial=editorialScore(site), overlap=categoryMatches(main,site), strong=strongCategoryMatches(main,site);
     if(editorial&&commerce<4)return false; if(commerce<2)return false;
-    if(site.sourceType==='direct-site')return commerce>=3||strong>0;
+    if(site.sourceType==='direct-site')return strong>0||(overlap>0&&commerce>=2);
     return overlap>0&&commerce>=2;
   }).sort((a,b)=>scoreCommercialCompetitor(main,b)-scoreCommercialCompetitor(main,a)).slice(0,10);
 }
