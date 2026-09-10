@@ -70,11 +70,31 @@ const intelligenceEngine = await readFile(join(coreDir, 'intelligence-engine.ser
 if (!intelligenceEngine.includes('buildCompetitiveIntelligence')) violations.push('intelligence engine: deterministic builder missing');
 if (!intelligenceEngine.includes('price-change') || !intelligenceEngine.includes('offer-change') || !intelligenceEngine.includes('product-change') || !intelligenceEngine.includes('messaging-change')) violations.push('intelligence engine: commercial signal classes missing');
 if (!intelligenceEngine.includes('eventEvidence')) violations.push('intelligence engine: evidence lineage missing');
+if (!intelligenceEngine.includes('buildPatterns')) violations.push('intelligence engine: cross-competitor patterns missing');
+if (!intelligenceEngine.includes("'change'")) violations.push('intelligence engine: legacy monitoring compatibility missing');
 
 const businessIntelligence = await readFile(join(coreDir, 'business-intelligence.functions.ts'), 'utf8');
 if (!businessIntelligence.includes('buildCompetitiveIntelligence')) violations.push('business intelligence: shared intelligence engine missing');
 if (!businessIntelligence.includes('change_score')) violations.push('business intelligence: significance score ingestion missing');
 if (!businessIntelligence.includes("from('business_metrics')") || !businessIntelligence.includes("from('business_insights')")) violations.push('business intelligence: durable persistence missing');
+if (!businessIntelligence.includes('getBusinessContext')) violations.push('business intelligence: business context personalization missing');
+
+const decisionEngine = await readFile(join(coreDir, 'decision-engine.server.ts'), 'utf8');
+if (!decisionEngine.includes('buildDecisions')) violations.push('decision engine: deterministic builder missing');
+if (!decisionEngine.includes('missing-evidence')) violations.push('decision engine: evidence gate missing');
+if (!decisionEngine.includes('low-confidence')) violations.push('decision engine: confidence gate missing');
+if (!decisionEngine.includes('stableDecisionKey')) violations.push('decision engine: duplicate-safe identity missing');
+
+const decisionFunctions = await readFile(join(coreDir, 'decision.functions.ts'), 'utf8');
+if (!decisionFunctions.includes('buildDecisions')) violations.push('decision functions: shared decision engine missing');
+if (!decisionFunctions.includes("from('decisions')")) violations.push('decision functions: durable decision persistence missing');
+if (!decisionFunctions.includes("eq('user_id',context.userId)")) violations.push('decision functions: tenant scoping missing');
+if (!decisionFunctions.includes('refreshDecisionEngine')) violations.push('decision functions: refresh boundary missing');
+
+const decisionMigration = await readFile(join(root, 'migrations', '20260910221000_decision_engine.sql'), 'utf8');
+if (!decisionMigration.includes('create table if not exists public.decisions')) violations.push('decision migration: decisions table missing');
+if (!decisionMigration.includes('unique (user_id, decision_key)')) violations.push('decision migration: tenant decision uniqueness missing');
+if (!decisionMigration.includes('evidence_count') || !decisionMigration.includes('evidence jsonb')) violations.push('decision migration: evidence lineage missing');
 
 if (violations.length) {
   console.error('ARCHITECTURE_SMOKE_FAILED');
