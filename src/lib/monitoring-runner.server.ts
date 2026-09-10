@@ -48,6 +48,7 @@ function mapSnapshot(row: any): MonitoringSnapshotInput | null {
     h2: stringArray(row.h2),
     textExcerpt: String(row.text_excerpt ?? ''),
     checkedAt: String(row.checked_at),
+    acquisitionProvider: row.acquisition_provider === 'apify' ? 'apify' : 'direct',
   } : null;
 }
 
@@ -91,7 +92,7 @@ export async function executeMonitoringCheck(target: MonitoringRunTarget, trigge
   const db = getDatabase();
   try {
     const current = await captureMonitoringSnapshot(target.url);
-    const { data: previous, error: previousError } = await db.from('monitoring_snapshots').select('id,content_hash,title,description,h1,h2,text_excerpt,checked_at').eq('target_id', target.id).eq('user_id', target.userId).order('checked_at', { ascending: false }).limit(1).maybeSingle();
+    const { data: previous, error: previousError } = await db.from('monitoring_snapshots').select('id,content_hash,title,description,h1,h2,text_excerpt,checked_at,acquisition_provider').eq('target_id', target.id).eq('user_id', target.userId).order('checked_at', { ascending: false }).limit(1).maybeSingle();
     if (previousError) throw new Error(previousError.message);
 
     const change = detectMonitoringChange(mapSnapshot(previous), current);
@@ -105,6 +106,7 @@ export async function executeMonitoringCheck(target: MonitoringRunTarget, trigge
       h2: current.h2,
       text_excerpt: current.textExcerpt,
       checked_at: current.checkedAt,
+      acquisition_provider: current.acquisitionProvider ?? 'direct',
     }).select('id').single();
     if (snapshotError) throw new Error(snapshotError.message);
 
@@ -163,7 +165,7 @@ export async function executeMonitoringCheck(target: MonitoringRunTarget, trigge
           change_score: 100,
           title: `فشل فحص ${target.name}`,
           summary: message.slice(0, 500),
-          evidence: { url: target.url, trigger },
+          evidence: { url: target.url, trigger, acquisitionPolicy: 'direct-with-configured-apify-fallback' },
           detected_at: checkedAt,
         });
       }
