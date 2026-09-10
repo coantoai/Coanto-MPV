@@ -71,7 +71,7 @@ export const refreshBusinessIntelligence=createServerFn({method:'POST'}).middlew
     analysesCount:analysisRows.length,
     memoryItemsCount:memoryRows.length,
     decisionsCount:decisions.length,
-    businessContext:businessContext?{businessName:businessContext.businessName,primaryMarket:businessContext.primaryMarket,competitiveGoals:businessContext.competitiveGoals}:undefined,
+    ...(businessContext?{businessContext:{businessName:businessContext.businessName,primaryMarket:businessContext.primaryMarket,competitiveGoals:businessContext.competitiveGoals}}:{}),
   });
 
   const {error:oldMetricError}=await db.from('business_metrics').delete().eq('user_id',context.userId).eq('run_key',runKey);if(oldMetricError)throw new Error(oldMetricError.message);
