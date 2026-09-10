@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, ArrowUpLeft, CheckCircle2, CircleDot, Clock3, Crosshair, Eye, Search, ShieldCheck, Sparkles, Target, TrendingUp } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { clientAuth } from "@/lib/auth-client";
 
 type Metadata = {
   evidenceStrength?: string; evidenceCount?: number; sourceCount?: number; caveat?: string;
@@ -23,9 +23,9 @@ export default function CoantoApp() {
   async function run(e: FormEvent) {
     e.preventDefault(); setLoading(true); setError("");
     try {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) { await nav({ to: "/auth" }); return; }
-      const response = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session.access_token}` }, body: JSON.stringify({ storeUrl: url, competitors: [] }) });
+      const session = await clientAuth.getSession();
+      if (!session) { await nav({ to: "/auth" }); return; }
+      const response = await fetch("/api/analyze", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ storeUrl: url, competitors: [] }) });
       const out = JSON.parse(await response.text()); if (!response.ok) throw new Error(out.error || "فشل التحليل"); setAnalysis(out);
     } catch (e) { setError(e instanceof Error ? e.message : "حدث خطأ"); } finally { setLoading(false); }
   }
