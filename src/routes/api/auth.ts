@@ -2,12 +2,15 @@ import { createFileRoute } from '@tanstack/react-router';
 import { createClient } from '@insforge/sdk';
 import { getServerConfig } from '@/lib/config.server';
 import { accessTokenFromRequest, authenticateRequest, authCookie, clearAuthCookie } from '@/lib/auth.server';
+import { apiSecurityHeaders, contentLengthTooLarge, guardSameOriginMutation, safeAuthRedirect, utf8TooLarge } from '@/lib/http-security.server';
 
 const MAX_BODY = 16_000;
-function json(body: unknown, status = 200, headers: HeadersInit = {}) {
+const MAX_EMAIL = 320;
+const MAX_PASSWORD = 256;
+function json(request: Request, body: unknown, status = 200, headers: HeadersInit = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers },
+    headers: apiSecurityHeaders(request, { 'content-type': 'application/json; charset=utf-8', ...headers }),
   });
 }
 function publicAuthClient() {
@@ -21,35 +24,47 @@ export const Route = createFileRoute('/api/auth')({
     handlers: {
       GET: async ({ request }) => {
         const principal = await authenticateRequest(request);
-        return principal ? json({ authenticated: true, userId: principal.userId }) : json({ authenticated: false }, 401);
+        return principal ? json(request, { authenticated: true, userId: principal.userId }) : json(request, { authenticated: false }, 401);
       },
       POST: async ({ request }) => {
+        const mutation = guardSameOriginMutation(request);
+        if (!mutation.ok) return json(request, { error: 'Cross-site request rejected.' }, mutation.status);
+        if (contentLengthTooLarge(request, MAX_BODY)) return json(request, { error: 'Request too large.' }, 413);
         const raw = await request.text();
-        if (new TextEncoder().encode(raw).byteLength > MAX_BODY) return json({ error: 'Request too large.' }, 413);
+        if (utf8TooLarge(raw, MAX_BODY)) return json(request, { error: 'Request too large.' }, 413);
         let body: { action?: string; email?: string; password?: string; redirectTo?: string };
-        try { body = JSON.parse(raw); } catch { return json({ error: 'Invalid request.' }, 400); }
+        try { body = JSON.parse(raw); } catch { return json(request, { error: 'Invalid request.' }, 400); }
         const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
         const password = typeof body.password === 'string' ? body.password : '';
-        if (!email || !password) return json({ error: 'Email and password are required.' }, 400);
+        if (!email || !password) return json(request, { error: 'Email and password are required.' }, 400);
+        if (email.length > MAX_EMAIL || password.length < 6 || password.length > MAX_PASSWORD) return json(request, { error: 'Invalid email or password.' }, 400);
         const client = publicAuthClient();
         if (body.action === 'signup') {
-          const payload = body.redirectTo ? { email, password, redirectTo: body.redirectTo } : { email, password };
-          const { data, error } = await client.auth.signUp(payload);
-          if (error) return json({ error: error.message || 'Sign up failed.' }, error.statusCode || 400);
+          const redirectTo = safeAuthRedirect(request, body.redirectTo);
+          const { data, error } = await client.auth.signUp({ email, password, redirectTo });
+          if (error) {
+            console.warn('InsForge sign-up rejected', { statusCode: error.statusCode });
+            return json(request, { error: 'Unable to create this account with the supplied details.' }, error.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 400);
+          }
           const token = data?.accessToken;
-          if (!token) return json({ authenticated: false, verificationRequired: true }, 202);
-          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
+          if (!token) return json(request, { authenticated: false, verificationRequired: true }, 202);
+          return json(request, { authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
         }
         if (body.action === 'signin') {
           const { data, error } = await client.auth.signInWithPassword({ email, password });
-          if (error) return json({ error: error.message || 'Sign in failed.' }, error.statusCode || 401);
+          if (error) {
+            console.warn('InsForge sign-in rejected', { statusCode: error.statusCode });
+            return json(request, { error: 'Invalid email or password.' }, 401);
+          }
           const token = data?.accessToken;
-          if (!token) return json({ error: 'Authentication session was not created.' }, 502);
-          return json({ authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
+          if (!token) return json(request, { error: 'Authentication session was not created.' }, 502);
+          return json(request, { authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
         }
-        return json({ error: 'Unsupported auth action.' }, 400);
+        return json(request, { error: 'Unsupported auth action.' }, 400);
       },
       DELETE: async ({ request }) => {
+        const mutation = guardSameOriginMutation(request);
+        if (!mutation.ok) return json(request, { error: 'Cross-site request rejected.' }, mutation.status);
         const token = accessTokenFromRequest(request);
         if (token) {
           try {
@@ -60,7 +75,7 @@ export const Route = createFileRoute('/api/auth')({
             // Cookie removal is authoritative for the local session even if remote revocation fails.
           }
         }
-        return json({ ok: true }, 200, { 'set-cookie': clearAuthCookie(request) });
+        return json(request, { ok: true }, 200, { 'set-cookie': clearAuthCookie(request) });
       },
     },
   },
