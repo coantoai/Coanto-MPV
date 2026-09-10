@@ -1,1 +1,12 @@
-import{createMiddleware}from"@tanstack/react-start";import{supabase}from"./client";export const attachSupabaseAuth=createMiddleware({type:"function"}).client(async({next})=>{const{data}=await supabase.auth.getSession();const token=data.session?.access_token;return next({headers:token?{Authorization:`Bearer ${token}`}:{}})});
+import { createMiddleware } from '@tanstack/react-start';
+import { clientAuth } from '@/lib/auth-client';
+
+/** @deprecated Prefer attachClientAuth. Kept temporarily for compatibility. */
+export const attachClientAuth = createMiddleware({ type: 'function' }).client(async ({ next }) => {
+  const session = await clientAuth.getSession();
+  return next({
+    headers: session ? { Authorization: `Bearer ${session.accessToken}` } : {},
+  });
+});
+
+export const attachSupabaseAuth = attachClientAuth;
