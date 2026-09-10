@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live]
+        check: [typecheck, lint, smoke, architecture, onboarding, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -32,6 +32,7 @@ jobs:
             lint) bun run lint ;;
             smoke) bun run test:smoke ;;
             architecture) bun run test:architecture ;;
+            onboarding) bun run test:onboarding ;;
             evidence) bun run test:evidence ;;
             evidence-collector) bun run test:evidence-collector ;;
             claim) bun run test:claim ;;
@@ -93,7 +94,7 @@ jobs:
           grep -Eq '\"service\":\"coanto\"' /tmp/coanto-health.json
       - name: Validate product routes
         run: |
-          for path in /decision /memory /monitoring /business-intelligence; do
+          for path in /onboarding /decision /memory /monitoring /business-intelligence; do
             curl --fail --silent --show-error "http://127.0.0.1:3000${path}" > "/tmp/coanto-${path#/}.html"
             test -s "/tmp/coanto-${path#/}.html"
           done
@@ -103,6 +104,7 @@ jobs:
 
   ai-live-e2e:
     name: AI live E2E (Gemini diagnostic)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: verify
     steps:
@@ -131,6 +133,7 @@ jobs:
 
   live-discovery:
     name: Live discovery (Gemini only)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -168,6 +171,7 @@ jobs:
 
   ai-benchmark:
     name: AI benchmark (Gemini only)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
