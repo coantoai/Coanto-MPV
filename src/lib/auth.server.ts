@@ -1,44 +1,48 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/integrations/supabase/types';
+import { createClient } from '@insforge/sdk';
+import { getServerConfig } from './config.server';
+
+export const AUTH_COOKIE = 'coanto_access_token';
 
 export type AuthPrincipal = {
   userId: string;
-  provider: 'supabase';
+  provider: 'insforge';
 };
 
-function bearerToken(request: Request): string | null {
+function cookieValue(request: Request, name: string): string | null {
+  const cookie = request.headers.get('cookie') ?? '';
+  for (const part of cookie.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return null;
+}
+
+export function accessTokenFromRequest(request: Request): string | null {
   const header = request.headers.get('authorization');
-  if (!header?.startsWith('Bearer ')) return null;
-  const token = header.slice(7).trim();
-  return token || null;
+  if (header?.startsWith('Bearer ')) {
+    const token = header.slice(7).trim();
+    if (token) return token;
+  }
+  return cookieValue(request, AUTH_COOKIE);
 }
 
-async function authenticateWithSupabase(token: string): Promise<AuthPrincipal | null> {
-  const url = process.env['SUPABASE_URL'];
-  const key = process.env['SUPABASE_PUBLISHABLE_KEY'];
-  if (!url || !key) return null;
-
-  const client = createClient<Database>(url, key, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false, storage: undefined },
-  });
-  const { data, error } = await client.auth.getClaims(token);
-  const subject = data?.claims?.sub;
-  if (error || !subject) return null;
-  return { userId: String(subject), provider: 'supabase' };
+export function authCookie(token: string): string {
+  return `${AUTH_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`;
 }
 
-/**
- * Server-side COANTO auth boundary.
- *
- * Application routes must depend on this function rather than a vendor SDK.
- * Supabase is the current auth implementation; InsForge is the target backend.
- * Keeping this boundary stable lets us migrate auth without rewriting routes.
- */
+export function clearAuthCookie(): string {
+  return `${AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+}
+
 export async function authenticateRequest(request: Request): Promise<AuthPrincipal | null> {
-  const token = bearerToken(request);
+  const token = accessTokenFromRequest(request);
   if (!token) return null;
-  return authenticateWithSupabase(token);
+  const { insforge } = getServerConfig();
+  const client = createClient({ baseUrl: insforge.url, accessToken: token });
+  const { data, error } = await client.auth.getCurrentUser();
+  const userId = data?.user?.id;
+  if (error || !userId) return null;
+  return { userId: String(userId), provider: 'insforge' };
 }
 
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
