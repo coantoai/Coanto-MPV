@@ -10,51 +10,35 @@ export type AuthResult = {
   message?: string;
 };
 
-/**
- * Browser auth boundary for COANTO.
- *
- * Core UI must depend on this module rather than a vendor SDK directly.
- * Today the implementation is Supabase-backed. Moving auth to InsForge
- * therefore becomes an adapter change instead of an application rewrite.
- */
+function toSession(session: { access_token: string; user?: { id?: string } | null } | null): ClientAuthSession | null {
+  if (!session) return null;
+  const base: ClientAuthSession = { accessToken: session.access_token };
+  const userId = session.user?.id;
+  return userId ? { ...base, userId } : base;
+}
+
+/** Browser auth boundary for COANTO. */
 export const clientAuth = {
   async getSession(): Promise<ClientAuthSession | null> {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
-    const session = data.session;
-    if (!session) return null;
-    return {
-      accessToken: session.access_token,
-      userId: session.user?.id,
-    };
+    return toSession(data.session);
   },
 
   async signIn(email: string, password: string): Promise<AuthResult> {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) throw error;
-    return {
-      session: data.session
-        ? { accessToken: data.session.access_token, userId: data.session.user?.id }
-        : null,
-    };
+    return { session: toSession(data.session) };
   },
 
   async signUp(email: string, password: string, redirectTo?: string): Promise<AuthResult> {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: redirectTo ? { emailRedirectTo: redirectTo } : undefined,
-    });
+    const credentials = redirectTo
+      ? { email: email.trim(), password, options: { emailRedirectTo: redirectTo } }
+      : { email: email.trim(), password };
+    const { data, error } = await supabase.auth.signUp(credentials);
     if (error) throw error;
-    return {
-      session: data.session
-        ? { accessToken: data.session.access_token, userId: data.session.user?.id }
-        : null,
-      message: data.session ? undefined : 'verification-required',
-    };
+    const session = toSession(data.session);
+    return session ? { session } : { session: null, message: 'verification-required' };
   },
 
   async signOut(): Promise<void> {
