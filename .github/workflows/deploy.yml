@@ -41,7 +41,8 @@ jobs:
             research-proof) bun run test:research-proof ;;
             ai-contract) bun run test:ai-contract ;;
             build) bun run build ;;
-            monitoring-live) bun run test:monitoring-live ;;\n            monitoring-engine) bun run test:monitoring-engine ;;
+            monitoring-live) bun run test:monitoring-live ;;
+            monitoring-engine) bun run test:monitoring-engine ;;
           esac
 
   insforge-integration:
