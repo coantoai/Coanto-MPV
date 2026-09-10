@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireAuth } from "@/lib/auth-middleware";
 import { getDatabase } from "@/lib/database.server";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/json";
 
 export type BusinessInsight={id:string;title:string;summary:string;category:string;impact:string;confidence:number;evidence:Json[];recommendation:string|null;createdAt:string};
 export type BusinessMetric={id:string;metricKey:string;metricValue:number;unit:string|null;periodStart:string|null;periodEnd:string|null;createdAt:string};
