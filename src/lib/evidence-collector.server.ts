@@ -1,5 +1,6 @@
 import { createEvidence, dedupeEvidence, type EvidenceInput, type EvidenceRecord } from './evidence-engine.server';
-import { fetchSite, searchEvidenceForUrl, validateTargetUrl, type SiteSnapshot } from './analyze.server';
+import { searchEvidenceForUrl, validateTargetUrl, type SiteSnapshot } from './analyze.server';
+import { acquireSiteSnapshot, type AcquiredSiteSnapshot } from './acquisition.server';
 
 export type EvidenceCollectionRequest = {
   urls: string[];
@@ -12,6 +13,8 @@ export type EvidenceCollectionResult = {
   records: EvidenceRecord[];
   rejected: Array<{ url: string; reason: string }>;
 };
+
+type CollectionSnapshot = SiteSnapshot & { acquisitionProvider?: 'direct' | 'apify' };
 
 function snapshotContent(snapshot: SiteSnapshot) {
   return [
@@ -29,7 +32,8 @@ function canonicalCollectionUrl(value: string) {
   return url.toString();
 }
 
-function inputFromSnapshot(snapshot: SiteSnapshot, request: EvidenceCollectionRequest, retrievedAt: string): EvidenceInput {
+function inputFromSnapshot(snapshot: CollectionSnapshot, request: EvidenceCollectionRequest, retrievedAt: string): EvidenceInput {
+  const acquisitionProvider = snapshot.acquisitionProvider ?? (snapshot.sourceType === 'search-index' ? 'search-index' : 'direct');
   return {
     kind: snapshot.sourceType === 'direct-site' ? 'direct' : 'search',
     sourceUrl: snapshot.url,
@@ -38,8 +42,9 @@ function inputFromSnapshot(snapshot: SiteSnapshot, request: EvidenceCollectionRe
     retrievedAt,
     content: snapshotContent(snapshot),
     metadata: {
-      collector: 'coanto-evidence-collector-v1',
+      collector: 'coanto-evidence-collector-v2',
       sourceType: snapshot.sourceType,
+      acquisitionProvider,
       title: snapshot.title.slice(0, 500),
     },
   };
@@ -51,7 +56,8 @@ function hasExplicitScheme(value: string) {
 
 /**
  * Collects source observations only. It never promotes an observation to VERIFIED
- * and never treats an AI-generated statement as evidence by itself.
+ * and never treats an AI-generated statement as evidence by itself. Direct HTTP
+ * is attempted first by default; configured Apify acquisition is a bounded fallback.
  */
 export async function collectEvidence(request: EvidenceCollectionRequest): Promise<EvidenceCollectionResult> {
   const maxSources = Math.max(1, Math.min(request.maxSources ?? 12, 24));
@@ -83,7 +89,7 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
   for (const sourceUrl of normalizedUrls) {
     const retrievedAt = new Date().toISOString();
     try {
-      const snapshot = await fetchSite(sourceUrl);
+      const snapshot: AcquiredSiteSnapshot = await acquireSiteSnapshot(sourceUrl);
       records.push(createEvidence(inputFromSnapshot(snapshot, request, retrievedAt)));
       continue;
     } catch (directError) {
@@ -94,7 +100,7 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
           continue;
         }
       } catch {
-        // Preserve the original direct-fetch error as the actionable failure reason.
+        // Preserve the acquisition error as the actionable failure reason.
       }
       rejected.push({
         url: sourceUrl,
