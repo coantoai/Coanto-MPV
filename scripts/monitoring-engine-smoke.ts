@@ -19,6 +19,9 @@ if (!title.changed || title.eventType !== 'title-change' || title.severity !== '
 const structure = detectMonitoringChange(base, { ...base, contentHash: 'c', h1: ['Running shoes', 'Trail shoes'], checkedAt: '2026-09-10T02:00:00.000Z' });
 if (!structure.changed || structure.eventType !== 'structure-change') throw new Error('Structure change classification failed.');
 
+const noisy = detectMonitoringChange(base, { ...base, contentHash: 'd', textExcerpt: 'Running shoes for everyday training and comfort. ', checkedAt: '2026-09-10T03:00:00.000Z' });
+if (noisy.changed || noisy.evidence.noiseSuppressed !== true) throw new Error('Noise suppression failed.');
+
 const first = detectMonitoringChange(null, base);
 if (first.changed) throw new Error('Baseline must not create a change event.');
 
