@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { createHash } from "node:crypto";
-import { requireAuth } from "@/lib/auth-middleware.server";
+import { requireAuth } from "@/lib/auth-middleware";
 import { fetchSite, validateTargetUrl } from "@/lib/analyze.server";
 import type { Json } from "@/integrations/supabase/types";
 
