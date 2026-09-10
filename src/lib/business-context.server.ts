@@ -23,8 +23,22 @@ export type BusinessContextInput = {
   currency?: string;
 };
 
-export type BusinessContext = BusinessContextInput & {
+export type BusinessContext = {
   userId: string;
+  businessName: string;
+  websiteUrl: string;
+  industry: string;
+  businessModel: BusinessModel;
+  companyStage: CompanyStage;
+  primaryMarket: string;
+  targetMarkets: string[];
+  targetCustomer: string;
+  valueProposition: string;
+  productsServices: string[];
+  competitiveGoals: string[];
+  knownCompetitors: string[];
+  preferredLanguage: string;
+  currency: string;
   onboardingCompletedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -57,32 +71,32 @@ function list(value: unknown, label: string, maxItems: number, maxLength = 180) 
   return out;
 }
 
-export function normalizeBusinessContext(input: unknown): BusinessContextInput {
+export function normalizeBusinessContext(input: unknown): Required<BusinessContextInput> {
   const raw = input && typeof input === 'object' ? input as Record<string, unknown> : {};
-  const website = text(raw.websiteUrl, 'رابط الموقع', 4, 500);
+  const website = text(raw['websiteUrl'], 'رابط الموقع', 4, 500);
   const valid = validateTargetUrl(website);
   if (!valid.ok || !valid.url) throw new Error(valid.reason || 'رابط الموقع غير صالح.');
-  const preferredLanguage = typeof raw.preferredLanguage === 'string' ? raw.preferredLanguage.trim().toLowerCase() : 'ar';
+  const preferredLanguage = typeof raw['preferredLanguage'] === 'string' ? raw['preferredLanguage'].trim().toLowerCase() : 'ar';
   if (!/^[a-z]{2}(?:-[a-z]{2})?$/i.test(preferredLanguage)) throw new Error('اللغة المفضلة غير صالحة.');
-  const currency = typeof raw.currency === 'string' ? raw.currency.trim().toUpperCase() : 'USD';
+  const currency = typeof raw['currency'] === 'string' ? raw['currency'].trim().toUpperCase() : 'USD';
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error('رمز العملة غير صالح.');
-  const productsServices = list(raw.productsServices, 'المنتجات أو الخدمات', 20, 180);
+  const productsServices = list(raw['productsServices'], 'المنتجات أو الخدمات', 20, 180);
   if (!productsServices.length) throw new Error('أضف منتجًا أو خدمة واحدة على الأقل.');
-  const competitiveGoals = list(raw.competitiveGoals, 'أهداف المنافسة', 12, 180);
+  const competitiveGoals = list(raw['competitiveGoals'], 'أهداف المنافسة', 12, 180);
   if (!competitiveGoals.length) throw new Error('اختر هدفًا تنافسيًا واحدًا على الأقل.');
   return {
-    businessName: text(raw.businessName, 'اسم النشاط', 2, 120),
+    businessName: text(raw['businessName'], 'اسم النشاط', 2, 120),
     websiteUrl: valid.url,
-    industry: text(raw.industry, 'القطاع', 2, 120),
-    businessModel: enumValue(raw.businessModel, BUSINESS_MODELS, 'نموذج العمل'),
-    companyStage: enumValue(raw.companyStage, COMPANY_STAGES, 'مرحلة الشركة'),
-    primaryMarket: text(raw.primaryMarket, 'السوق الأساسي', 2, 120),
-    targetMarkets: list(raw.targetMarkets, 'الأسواق المستهدفة', 20, 120),
-    targetCustomer: text(raw.targetCustomer, 'العميل المستهدف', 3, 1200),
-    valueProposition: text(raw.valueProposition, 'عرض القيمة', 3, 1600),
+    industry: text(raw['industry'], 'القطاع', 2, 120),
+    businessModel: enumValue(raw['businessModel'], BUSINESS_MODELS, 'نموذج العمل'),
+    companyStage: enumValue(raw['companyStage'], COMPANY_STAGES, 'مرحلة الشركة'),
+    primaryMarket: text(raw['primaryMarket'], 'السوق الأساسي', 2, 120),
+    targetMarkets: list(raw['targetMarkets'], 'الأسواق المستهدفة', 20, 120),
+    targetCustomer: text(raw['targetCustomer'], 'العميل المستهدف', 3, 1200),
+    valueProposition: text(raw['valueProposition'], 'عرض القيمة', 3, 1600),
     productsServices,
     competitiveGoals,
-    knownCompetitors: list(raw.knownCompetitors, 'المنافسون المعروفون', 20, 300),
+    knownCompetitors: list(raw['knownCompetitors'], 'المنافسون المعروفون', 20, 300),
     preferredLanguage,
     currency,
   };
