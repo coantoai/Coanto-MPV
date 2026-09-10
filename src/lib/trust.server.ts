@@ -20,6 +20,13 @@ function safeSourceUrls(value: unknown, allowedHosts: Set<string>, aiSources: Se
   });
 }
 
+/**
+ * Evidence gate for AI output.
+ *
+ * Factual competitor signals survive only when they can be linked to an allowed
+ * source URL or to a competitor that has collected source evidence. Free-form AI
+ * text is never accepted as evidence by itself.
+ */
 export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competitors: SiteSnapshot[], aiSourceUrls: string[] = []) {
   const result = record(analysis);
   const mainHost = hostname(main.url);
@@ -56,21 +63,26 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   const evidenceStrength = evidenceCount >= 8 && indexedEvidenceCount <= Math.max(2, directEvidenceCount) ? 'high' : evidenceCount >= 4 ? 'medium' : 'low';
 
   const signalRows = Array.isArray(result['signals']) ? result['signals'] : [];
-  result['signals'] = signalRows.map((row) => {
+  const checkedSignals = signalRows.map((row) => {
     const item = record(row);
     const sourceUrls = safeSourceUrls(item['sourceUrls'], allowed, aiSources);
-    const evidence = typeof item['evidence'] === 'string' ? item['evidence'].trim() : '';
-    const competitor = typeof item['competitor'] === 'string' ? item['competitor'].trim() : '';
-    const linkedCompetitor = Boolean(competitor) && [...evidenceByHost.entries()].some(([host, site]) => competitor.toLowerCase().includes(host) || competitor.toLowerCase().includes(site.title.toLowerCase()));
-    return { ...item, sourceUrls, evidenceStatus: sourceUrls.length > 0 || Boolean(evidence) || linkedCompetitor ? 'linked' : 'unlinked' };
+    const competitor = typeof item['competitor'] === 'string' ? item['competitor'].trim().toLowerCase() : '';
+    const linkedCompetitor = Boolean(competitor) && [...evidenceByHost.entries()].some(([host, site]) => {
+      if (!site.evidence.length) return false;
+      return competitor.includes(host) || competitor.includes(site.title.toLowerCase());
+    });
+    const evidenceStatus = sourceUrls.length > 0 || linkedCompetitor ? 'linked' : 'unlinked';
+    return { ...item, sourceUrls, evidenceStatus };
   });
+  const rejectedSignals = checkedSignals.filter((row) => row.evidenceStatus === 'unlinked');
+  result['signals'] = checkedSignals.filter((row) => row.evidenceStatus === 'linked');
 
   const unknowns = Array.isArray(result['unknowns']) ? result['unknowns'].filter((value): value is string => typeof value === 'string') : [];
   result['unknowns'] = [...new Set([
     ...unknowns,
     ...(competitors.some((site) => site.sourceType === 'search-index') ? ['بعض المنافسين مبنيون على أدلة مفهرسة لأن الوصول المباشر غير متاح.'] : []),
     ...(evidenceCount < 4 ? ['قوة الدليل محدودة؛ يجب عدم تحويل هذه النتيجة إلى حقيقة مؤكدة.'] : []),
-    ...(signalRows.some((row) => record(row)['evidenceStatus'] === 'unlinked') ? ['بعض الإشارات لا تحمل رابط مصدر صالحًا؛ تعامل معها كاستنتاج لا كحقيقة مستقلة.'] : []),
+    ...(rejectedSignals.length ? [`تم حجب ${rejectedSignals.length} إشارة لم تحمل رابط مصدر صالحًا أو ارتباطًا بمنافس ذي أدلة.`] : []),
   ])];
 
   const trust = Array.isArray(result['trust']) ? result['trust'] : [];
@@ -78,7 +90,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     ...trust,
     { type: 'evidence-gate', status: 'passed', detail: 'تم حذف أي منافس لا يمكن ربطه بمجموعة الأدلة المكتشفة.' },
     { type: 'source-transparency', status: 'passed', detail: 'تم تنظيف روابط المصادر وربطها بالمصادر المسموح بها.' },
-    { type: 'claim-linkage', status: signalRows.some((row) => record(row)['evidenceStatus'] === 'unlinked') ? 'caution' : 'passed', detail: 'تم فحص قابلية ربط الإشارات بمصدر أو دليل أو منافس معروف.' },
+    { type: 'claim-linkage', status: rejectedSignals.length ? 'caution' : 'passed', detail: rejectedSignals.length ? `تم حجب ${rejectedSignals.length} إشارة غير مدعومة.` : 'كل الإشارات المعروضة مرتبطة بمصدر أو منافس ذي دليل.' },
     { type: 'confidence-calibration', status: evidenceStrength === 'low' ? 'caution' : 'passed', detail: `قوة الثقة مشتقة من حجم الأدلة ونوعها: ${evidenceStrength}.` },
   ];
 
@@ -89,9 +101,11 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     directEvidenceCount,
     indexedEvidenceCount,
     evidenceStrength,
+    rejectedUnsupportedSignals: rejectedSignals.length,
     confidenceBasis: 'evidence-volume-and-source-type',
     provenanceAttached: true,
     claimLinkageChecked: true,
+    aiTextAcceptedAsEvidence: false,
   };
   return result;
 }
