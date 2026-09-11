@@ -24,6 +24,34 @@ async function countRecent(userId: string, since: string, limit: number) {
   return Array.isArray(data) ? data.length : 0;
 }
 
+async function expireStaleRunning(userId: string, inputHash: string, nowIso: string) {
+  const { error } = await getDatabase()
+    .from('operation_runs')
+    .update({ status: 'failed', error_code: 'expired-running-operation', completed_at: nowIso, updated_at: nowIso })
+    .eq('user_id', userId)
+    .eq('operation', 'analysis')
+    .eq('input_hash', inputHash)
+    .eq('status', 'running')
+    .lt('expires_at', nowIso);
+  if (error) throw new Error(`Expired analysis cleanup failed: ${error.message}`);
+}
+
+async function activeRunning(userId: string, inputHash: string, nowIso: string) {
+  const { data, error } = await getDatabase()
+    .from('operation_runs')
+    .select('id,expires_at')
+    .eq('user_id', userId)
+    .eq('operation', 'analysis')
+    .eq('input_hash', inputHash)
+    .eq('status', 'running')
+    .gte('expires_at', nowIso)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`Active analysis lookup failed: ${error.message}`);
+  return data;
+}
+
 export async function reserveAnalysisOperation(input: {
   userId: string;
   inputHash: string;
@@ -49,6 +77,13 @@ export async function reserveAnalysisOperation(input: {
   const cachedResult = record(cached?.result_json);
   if (cached?.id && cachedResult) {
     return { kind: 'cached', runId: String(cached.id), result: cachedResult, cacheExpiresAt: String(cached.expires_at) };
+  }
+
+  await expireStaleRunning(input.userId, input.inputHash, nowIso);
+  const running = await activeRunning(input.userId, input.inputHash, nowIso);
+  if (running?.id) {
+    const retryAfterSeconds = Math.max(1, Math.min(60, Math.ceil((Date.parse(String(running.expires_at)) - now.getTime()) / 1000)));
+    return { kind: 'in-progress', retryAfterSeconds };
   }
 
   const burstSince = new Date(now.getTime() - 60_000).toISOString();
@@ -79,6 +114,9 @@ export async function reserveAnalysisOperation(input: {
     .single();
 
   if (!insertError && inserted?.id) return { kind: 'started', runId: String(inserted.id), cacheExpiresAt: expiresAt };
+
+  const concurrent = await activeRunning(input.userId, input.inputHash, nowIso);
+  if (concurrent?.id) return { kind: 'in-progress', retryAfterSeconds: 60 };
 
   const { data: existing, error: existingError } = await db
     .from('operation_runs')
