@@ -9,11 +9,14 @@ const analysisRoute=await readFile(join(root,'src','routes','analysis.tsx'),'utf
 const violations:string[]=[];
 
 if(!dashboardFunctions.includes('requireAuth'))violations.push('dashboard data must require authentication');
-if(!dashboardFunctions.includes("eq('user_id', context.userId)"))violations.push('dashboard queries must remain tenant scoped');
+if(!dashboardFunctions.includes("eq('user_id', userId)"))violations.push('dashboard queries must remain tenant scoped');
 for(const table of ['competitors','monitoring_targets','monitoring_events','business_insights','decisions','analyses','analysis_evidence_links','business_metrics']){
   if(!dashboardFunctions.includes(`from('${table}')`))violations.push(`dashboard missing ${table} aggregation`);
 }
 if(!dashboardFunctions.includes('getBusinessContext'))violations.push('dashboard missing persisted business context');
+if(!dashboardFunctions.includes("count: 'exact'"))violations.push('dashboard health counters must use exact database counts');
+if(!dashboardFunctions.includes('Promise.allSettled'))violations.push('dashboard sources must fail independently');
+if(!dashboardFunctions.includes('degradedSources'))violations.push('dashboard must surface degraded source state');
 if(!dashboardUi.includes('topDecision'))violations.push('dashboard missing top decision');
 if(!dashboardUi.includes('changes'))violations.push('dashboard missing change feed');
 if(!dashboardUi.includes('insights'))violations.push('dashboard missing intelligence feed');
