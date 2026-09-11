@@ -1,0 +1,147 @@
+name: COANTO Launch Gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      launch_mode:
+        description: Launch profile
+        required: true
+        type: choice
+        options:
+          - validation
+          - commercial
+        default: validation
+      production_url:
+        description: Deployed production origin to verify
+        required: true
+        type: string
+        default: https://coanto.com
+      backup_confirmed:
+        description: Fresh restorable production backup/export verified
+        required: true
+        type: boolean
+        default: false
+      rollback_confirmed:
+        description: Previous known-good deployment is available for rollback
+        required: true
+        type: boolean
+        default: false
+      rollback_sha:
+        description: Previous known-good production commit SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coanto-launch-gate
+  cancel-in-progress: false
+
+env:
+  CI: true
+
+jobs:
+  static-gates:
+    name: Static release gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run test:launch-readiness
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run test:security
+      - run: bun run test:production-qa
+      - run: bun run build
+
+  production-dependencies:
+    name: Production dependency proof
+    runs-on: ubuntu-latest
+    needs: static-gates
+    env:
+      COANTO_LAUNCH_MODE: ${{ inputs.launch_mode }}
+      COANTO_SITE_URL: ${{ inputs.production_url }}
+      COANTO_RELEASE_SHA: ${{ github.sha }}
+      INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
+      INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+      AUTH_RATE_LIMIT_SECRET: ${{ secrets.AUTH_RATE_LIMIT_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+      BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_MODE: ${{ vars.APIFY_MODE || 'fallback' }}
+      APIFY_ACTOR_ID: ${{ vars.APIFY_ACTOR_ID || 'apify/website-content-crawler' }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'gemini' }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GEMINI_COANTO_ONE }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
+    steps:
+      - name: Enforce recovery confirmations
+        env:
+          BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
+          ROLLBACK_CONFIRMED: ${{ inputs.rollback_confirmed }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          test "$BACKUP_CONFIRMED" = "true" || (echo "Fresh backup/export is not confirmed." && exit 1)
+          test "$ROLLBACK_CONFIRMED" = "true" || (echo "Rollback deployment is not confirmed." && exit 1)
+          test -n "$ROLLBACK_SHA" || (echo "rollback_sha is required." && exit 1)
+          test "$ROLLBACK_SHA" != "$GITHUB_SHA" || (echo "rollback_sha must differ from the candidate release." && exit 1)
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: Validate production environment without printing secrets
+        run: bun run launch:check
+      - name: Prove a real discovery provider
+        run: bun run launch:search-live
+      - name: Prove real InsForge persistence and launch schemas
+        run: |
+          bun run test:insforge
+          bun run test:insforge-apify
+          bun run test:insforge-performance
+          bun run test:insforge-billing
+          bun run test:insforge-auth
+      - name: Prove at least one real AI provider end to end
+        env:
+          COANTO_E2E_URL: https://www.allbirds.com/
+        run: bun run test:ai-live-e2e
+
+  deployed-candidate:
+    name: Deployed candidate proof
+    runs-on: ubuntu-latest
+    needs: production-dependencies
+    env:
+      PRODUCTION_URL: ${{ inputs.production_url }}
+      EXPECTED_SHA: ${{ github.sha }}
+    steps:
+      - name: Verify HTTPS health, release identity, and readiness
+        run: |
+          case "$PRODUCTION_URL" in https://*) ;; *) echo "Production URL must use HTTPS."; exit 1 ;; esac
+          base="${PRODUCTION_URL%/}"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 -D /tmp/health.headers "$base/api/health" > /tmp/health.json
+          grep -Eq '"ok":true' /tmp/health.json
+          grep -Fq "$EXPECTED_SHA" /tmp/health.json || (echo "Deployed health endpoint does not report candidate SHA $EXPECTED_SHA." && cat /tmp/health.json && exit 1)
+          grep -Eqi '^strict-transport-security: .+' /tmp/health.headers
+          grep -Eqi '^x-content-type-options: nosniff' /tmp/health.headers
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$base/api/ready" > /tmp/ready.json
+          grep -Eq '"ready":true' /tmp/ready.json
+          grep -Eq '"insforge":"ready"' /tmp/ready.json
+      - name: Verify production security boundaries
+        run: |
+          base="${PRODUCTION_URL%/}"
+          code=$(curl --silent --show-error --proto '=https' --tlsv1.2 -o /tmp/auth.json -w '%{http_code}' "$base/api/auth"); test "$code" = "401"
+          code=$(curl --silent --show-error --proto '=https' --tlsv1.2 -o /tmp/cron.json -w '%{http_code}' "$base/api/monitoring-cron"); test "$code" = "401"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$base/" > /tmp/home.html
+          test -s /tmp/home.html
+      - name: Record launch gate result
+        run: echo "LAUNCH_GATE_OK release=$EXPECTED_SHA origin=$PRODUCTION_URL mode=${{ inputs.launch_mode }} rollback=${{ inputs.rollback_sha }}"
