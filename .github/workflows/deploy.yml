@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost, billing, production-qa]
+        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost, billing, production-qa, launch-readiness]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -52,6 +52,7 @@ jobs:
             performance-cost) bun run test:performance-cost ;;
             billing) bun run test:billing ;;
             production-qa) bun run test:production-qa ;;
+            launch-readiness) bun run test:launch-readiness ;;
           esac
 
   insforge-integration:
@@ -111,6 +112,7 @@ jobs:
           curl --fail --silent --show-error -D /tmp/coanto-health.headers http://127.0.0.1:3000/api/health > /tmp/coanto-health.json
           grep -Eq '"ok":true' /tmp/coanto-health.json
           grep -Eq '"service":"coanto"' /tmp/coanto-health.json
+          grep -Eq '"release":\{' /tmp/coanto-health.json
           grep -Eqi '^x-content-type-options: nosniff' /tmp/coanto-health.headers
           grep -Eqi '^x-frame-options: DENY' /tmp/coanto-health.headers
           grep -Eqi '^cache-control: no-store' /tmp/coanto-health.headers
@@ -121,6 +123,7 @@ jobs:
           test "$code" = "503"
           grep -Eq '"ready":false' /tmp/coanto-ready.json
           grep -Eq '"insforge":"unavailable"' /tmp/coanto-ready.json
+          grep -Eq '"release":\{' /tmp/coanto-ready.json
           grep -Eqi '^x-content-type-options: nosniff' /tmp/coanto-ready.headers
           grep -Eqi '^cache-control: no-store' /tmp/coanto-ready.headers
       - name: Validate unauthenticated and cross-origin boundaries
