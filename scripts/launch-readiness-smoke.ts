@@ -52,10 +52,17 @@ for (const key of ['COANTO_LAUNCH_MODE', 'COANTO_SITE_URL', 'COANTO_RELEASE_SHA'
   expect(envExample.includes(`${key}=`), `.env.example missing launch key ${key}.`);
 }
 
+const packageJson = await readFile(join(root, 'package.json'), 'utf8');
+expect(packageJson.includes('"packageManager":"bun@1.4.2"'), 'Launch toolchain must pin the Bun version.');
+
 const launchWorkflow = await readFile(join(root, '.github', 'workflows', 'launch-gate.yml'), 'utf8');
-for (const invariant of ['backup_confirmed', 'rollback_confirmed', 'rollback_sha', 'launch:check', 'launch:search-live', 'test:ai-live-e2e', '/api/ready', 'EXPECTED_SHA']) {
+for (const invariant of ['backup_confirmed', 'rollback_confirmed', 'rollback_sha', 'launch:check', 'launch:search-live', 'test:ai-live-e2e', '/api/ready', 'EXPECTED_SHA', 'git merge-base --is-ancestor', 'bun-version: 1.4.2']) {
   expect(launchWorkflow.includes(invariant), `Launch workflow missing ${invariant}.`);
 }
+
+const verifyWorkflow = await readFile(join(root, '.github', 'workflows', 'deploy.yml'), 'utf8');
+expect(verifyWorkflow.includes('BUN_VERSION: 1.4.2'), 'Main CI must use the pinned Bun toolchain.');
+expect(verifyWorkflow.includes('production-gate:') && verifyWorkflow.includes('PRODUCTION_GATE_OK'), 'Main CI must expose a single production gate after verification, runtime, and persistence checks.');
 
 const runbook = await readFile(join(root, 'docs', 'LAUNCH.md'), 'utf8');
 expect(runbook.includes('Validation launch') && runbook.includes('Commercial launch'), 'Launch profiles are undocumented.');
@@ -64,6 +71,7 @@ expect(runbook.includes('Live AI quota/availability'), 'External AI launch block
 
 const vercel = await readFile(join(root, 'vercel.json'), 'utf8');
 expect(vercel.includes('Strict-Transport-Security'), 'Production hosting config is missing HSTS.');
+expect(vercel.includes('/api/monitoring-cron') && vercel.includes('0 * * * *'), 'Production monitoring cron is not scheduled hourly.');
 
 const health = await readFile(join(root, 'src', 'routes', 'api', 'health.ts'), 'utf8');
 const ready = await readFile(join(root, 'src', 'routes', 'api', 'ready.ts'), 'utf8');
@@ -103,5 +111,8 @@ console.log('LAUNCH_READINESS_SMOKE_OK', JSON.stringify({
   commercialBlockedUntilGateway: true,
   recoveryGate: true,
   releaseIdentity: true,
+  toolchainPinned: true,
+  monitoringCronScheduled: true,
+  productionGate: true,
   secretLeakPatterns: 0,
 }));
