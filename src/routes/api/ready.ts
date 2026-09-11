@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { getDatabase } from '@/lib/database.server';
 import { apiSecurityHeaders } from '@/lib/http-security.server';
+import { releaseIdentity } from '@/lib/release.server';
 
 function json(request: Request, body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -15,6 +16,7 @@ export const Route = createFileRoute('/api/ready')({
     handlers: {
       GET: async ({ request }) => {
         const startedAt = Date.now();
+        const release = releaseIdentity();
         try {
           const { error } = await getDatabase().from('business_contexts').select('user_id').limit(1);
           if (error) throw new Error(error.message);
@@ -22,6 +24,7 @@ export const Route = createFileRoute('/api/ready')({
             ok: true,
             ready: true,
             service: 'coanto',
+            release,
             dependencies: { insforge: 'ready' },
             latencyMs: Date.now() - startedAt,
             timestamp: new Date().toISOString(),
@@ -31,6 +34,7 @@ export const Route = createFileRoute('/api/ready')({
             ok: false,
             ready: false,
             service: 'coanto',
+            release,
             dependencies: { insforge: 'unavailable' },
             latencyMs: Date.now() - startedAt,
             timestamp: new Date().toISOString(),
