@@ -63,12 +63,14 @@ export function evaluateLaunchReadiness(env: NodeJS.ProcessEnv = process.env): L
   const cronSecret = value(env, 'CRON_SECRET');
   const authSecret = value(env, 'AUTH_RATE_LIMIT_SECRET');
   const preferredAi = value(env, 'AI_PROVIDER').toLowerCase() || 'gemini';
-  const configuredAiProviders = AI_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
-  const configuredSearchProviders = SEARCH_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
+  const configuredAiProviders: string[] = AI_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
+  const configuredSearchProviders: string[] = SEARCH_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
+  const siteOriginReady = httpsPublicUrl(siteUrl);
+  const insforgeOriginReady = httpsPublicUrl(insforgeUrl);
 
   push(checks, 'launch-mode', 'pass', `Launch profile: ${mode}.`);
-  push(checks, 'site-origin', httpsPublicUrl(siteUrl) ? 'pass' : 'block', httpsPublicUrl(siteUrl) ? 'Public site origin is HTTPS.' : 'COANTO_SITE_URL must be a public HTTPS URL.');
-  push(checks, 'insforge-url', httpsPublicUrl(insforgeUrl) ? 'pass' : 'block', httpsPublicUrl(insforgeUrl) ? 'InsForge origin is HTTPS.' : 'INSFORGE_URL must be a public HTTPS URL.');
+  push(checks, 'site-origin', siteOriginReady ? 'pass' : 'block', siteOriginReady ? 'Public site origin is HTTPS.' : 'COANTO_SITE_URL must be a public HTTPS URL.');
+  push(checks, 'insforge-url', insforgeOriginReady ? 'pass' : 'block', insforgeOriginReady ? 'InsForge origin is HTTPS.' : 'INSFORGE_URL must be a public HTTPS URL.');
   push(checks, 'insforge-key', insforgeKey.startsWith('ik_') && insforgeKey.length >= 12 ? 'pass' : 'block', insforgeKey.startsWith('ik_') && insforgeKey.length >= 12 ? 'InsForge project key is configured.' : 'INSFORGE_API_KEY is missing or malformed.');
   push(checks, 'auth-throttle-secret', secretStrong(authSecret) ? 'pass' : 'block', secretStrong(authSecret) ? 'Independent auth-throttle secret is configured.' : 'AUTH_RATE_LIMIT_SECRET must be an independent secret with at least 32 characters.');
   push(checks, 'cron-secret', secretStrong(cronSecret) ? 'pass' : 'block', secretStrong(cronSecret) ? 'Monitoring cron secret is launch-grade.' : 'CRON_SECRET must contain at least 32 characters.');
