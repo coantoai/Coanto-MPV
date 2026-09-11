@@ -9,15 +9,32 @@ import { businessContextForPrompt, getBusinessContext } from '@/lib/business-con
 import { buildAnalysisEvidenceLedger } from '@/lib/evidence-ledger.server';
 import { createInsForgeEvidenceStore } from '@/lib/insforge-persistence.server';
 import { apiSecurityHeaders, contentLengthTooLarge, guardSameOriginMutation, requestId, utf8TooLarge } from '@/lib/http-security.server';
+import { analysisInputHash } from '@/lib/cost-policy.server';
+import { completeAnalysisOperation, failAnalysisOperation, reserveAnalysisOperation } from '@/lib/operation-guard.server';
 
 const MAX_REQUEST_BYTES = 64_000;
 const MAX_URL_LENGTH = 2_048;
 const MAX_COMPETITOR_LENGTH = 500;
-function json(request: Request, traceId: string, body: unknown, status = 200) {
+
+function json(request: Request, traceId: string, body: unknown, status = 200, extraHeaders: HeadersInit = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: apiSecurityHeaders(request, { 'content-type': 'application/json; charset=utf-8', 'x-request-id': traceId }),
+    headers: apiSecurityHeaders(request, {
+      'content-type': 'application/json; charset=utf-8',
+      'x-request-id': traceId,
+      ...extraHeaders,
+    }),
   });
+}
+
+function cachedAnalysis(result: Record<string, unknown>, traceId: string, runId: string, cacheExpiresAt: string) {
+  const cloned = structuredClone(result);
+  const metadata = cloned['metadata'] && typeof cloned['metadata'] === 'object' && !Array.isArray(cloned['metadata'])
+    ? { ...(cloned['metadata'] as Record<string, unknown>) }
+    : {};
+  Object.assign(metadata, { requestId: traceId, cacheHit: true, cachedRunId: runId, cacheExpiresAt });
+  cloned['metadata'] = metadata;
+  return cloned;
 }
 
 // @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
@@ -26,6 +43,14 @@ export const Route = createFileRoute('/api/analyze')({
     handlers: {
       POST: async ({ request }) => {
         const traceId = requestId(request);
+        let activeRun: { userId: string; runId: string } | null = null;
+        const failRun = async (code: string) => {
+          if (!activeRun) return;
+          try { await failAnalysisOperation(activeRun.userId, activeRun.runId, code); }
+          catch (error) { console.error('Analysis failure ledger write failed', { traceId, error }); }
+          activeRun = null;
+        };
+
         try {
           const mutation = guardSameOriginMutation(request);
           if (!mutation.ok) return json(request, traceId, { error: 'Cross-site request rejected.' }, mutation.status);
@@ -48,26 +73,60 @@ export const Route = createFileRoute('/api/analyze')({
             ? body.competitors.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter((item) => item.length > 0 && item.length <= MAX_COMPETITOR_LENGTH).slice(0, 10)
             : [];
           const urlValidation = validateTargetUrl(rawStoreUrl);
-          if (!urlValidation.ok) return json(request, traceId, { error: urlValidation.reason }, 400);
+          if (!urlValidation.ok || !urlValidation.url) return json(request, traceId, { error: urlValidation.reason }, 400);
+          const normalizedStoreUrl = normalizeUrl(urlValidation.url);
+          const inputHash = analysisInputHash({
+            storeUrl: normalizedStoreUrl,
+            competitors,
+            businessContextUpdatedAt: businessContext.updatedAt,
+          });
+
+          let reservation;
+          try { reservation = await reserveAnalysisOperation({ userId, inputHash }); }
+          catch (error) {
+            console.error('Analysis performance guard failed', { traceId, error });
+            return json(request, traceId, { error: 'تعذّر حجز تشغيل التحليل بأمان. حاول مرة أخرى.' }, 503, { 'retry-after': '30' });
+          }
+          if (reservation.kind === 'cached') {
+            return json(request, traceId, cachedAnalysis(reservation.result, traceId, reservation.runId, reservation.cacheExpiresAt));
+          }
+          if (reservation.kind === 'in-progress') {
+            return json(request, traceId, { error: 'هذا التحليل قيد التشغيل بالفعل.', code: 'ANALYSIS_IN_PROGRESS' }, 409, { 'retry-after': String(reservation.retryAfterSeconds) });
+          }
+          if (reservation.kind === 'burst-limited') {
+            return json(request, traceId, { error: 'تم الوصول إلى حد التحليلات اللحظي. حاول بعد قليل.', code: 'ANALYSIS_BURST_LIMIT' }, 429, { 'retry-after': String(reservation.retryAfterSeconds) });
+          }
+          if (reservation.kind === 'daily-limited') {
+            return json(request, traceId, { error: 'تم الوصول إلى ميزانية التحليل اليومية لهذا الحساب.', code: 'ANALYSIS_DAILY_LIMIT' }, 429, { 'retry-after': String(reservation.retryAfterSeconds) });
+          }
+          activeRun = { userId, runId: reservation.runId };
 
           let main;
-          try { main = await getMainSnapshot(urlValidation.url!); }
-          catch { return json(request, traceId, { error: 'تعذّر جمع أدلة عامة عن الموقع.' }, 422); }
+          try { main = await getMainSnapshot(normalizedStoreUrl); }
+          catch {
+            await failRun('EVIDENCE_COLLECTION_FAILED');
+            return json(request, traceId, { error: 'تعذّر جمع أدلة عامة عن الموقع.' }, 422);
+          }
           const discovered = await discoverCompetitors(main, competitors);
           const commercialCompetitors = filterCommercialCompetitors(main, discovered, competitors);
-          if (!commercialCompetitors.length) return json(request, traceId, { error: 'لم نجد منافسين تجاريين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج.' }, 422);
+          if (!commercialCompetitors.length) {
+            await failRun('NO_VERIFIED_COMPETITORS');
+            return json(request, traceId, { error: 'لم نجد منافسين تجاريين يمكن ربطهم بأدلة عامة كافية. لم يتم اختراع نتائج.' }, 422);
+          }
 
           const prompt = `OWNER-PROVIDED BUSINESS CONTEXT (context only; verify market claims independently):\n${businessContextForPrompt(businessContext)}\n\n${buildPrompt(main, commercialCompetitors)}`;
           let ai;
           try { ai = await runResearchAnalysis(prompt); }
           catch (error) {
             console.error('AI analysis failed', { traceId, error });
+            await failRun('AI_PROVIDER_FAILED');
             return json(request, traceId, { error: 'تعذّر تشغيل محرك التحليل حاليًا.' }, 502);
           }
           let parsedAi: Record<string, unknown>;
           try { parsedAi = validateAiOutput(parseJsonBlock(ai.text)); }
           catch (error) {
             console.error('AI output contract failed', { traceId, error });
+            await failRun('AI_CONTRACT_FAILED');
             return json(request, traceId, { error: 'محرك التحليل أعاد نتيجة غير مكتملة. لم يتم عرض نتيجة غير موثوقة.' }, 502);
           }
 
@@ -76,10 +135,12 @@ export const Route = createFileRoute('/api/analyze')({
           const directCount = sources.filter((source) => source.sourceType === 'direct-site').length;
           const indexedCount = sources.filter((source) => source.sourceType === 'search-index').length;
           const metadata = (analysis['metadata'] && typeof analysis['metadata'] === 'object' ? { ...(analysis['metadata'] as Record<string, unknown>) } : {}) as Record<string, unknown>;
-          const normalizedStoreUrl = normalizeUrl(urlValidation.url!);
           const observedAt = new Date().toISOString();
           Object.assign(metadata, {
             requestId: traceId,
+            analysisRunId: reservation.runId,
+            cacheHit: false,
+            cacheExpiresAt: reservation.cacheExpiresAt,
             storeUrl: normalizedStoreUrl,
             businessContextUpdatedAt: businessContext.updatedAt,
             analyzedAt: observedAt,
@@ -113,8 +174,16 @@ export const Route = createFileRoute('/api/analyze')({
             console.error('Analysis persistence failed', { traceId, error });
             metadata['saveError'] = 'تعذّر حفظ التحليل في السجل.';
           }
+
+          try {
+            await completeAnalysisOperation(userId, reservation.runId, analysis);
+            activeRun = null;
+          } catch (error) {
+            console.error('Analysis cache completion failed', { traceId, error });
+          }
           return json(request, traceId, analysis);
         } catch (error) {
+          await failRun('UNEXPECTED_ANALYSIS_FAILURE');
           console.error('Analysis request failed', { traceId, error });
           return json(request, traceId, { error: 'حدث خطأ أثناء التحليل. حاول مرة أخرى.' }, 500);
         }
