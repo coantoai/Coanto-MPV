@@ -16,6 +16,19 @@ function keyedHash(value: string) {
   return createHmac('sha256', secret()).update(value, 'utf8').digest('hex');
 }
 
+function databaseError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object') {
+    const value = error as Record<string, unknown>;
+    for (const key of ['message', 'error', 'details', 'hint', 'code']) {
+      if (typeof value[key] === 'string' && value[key]) return String(value[key]);
+    }
+    try { return JSON.stringify(error); } catch {}
+  }
+  return 'unknown database error';
+}
+
 function networkHint(request: Request): string | null {
   const value = request.headers.get('cf-connecting-ip')?.trim()
     || request.headers.get('x-real-ip')?.trim()
@@ -38,7 +51,7 @@ async function countFailures(column: 'subject_hash' | 'network_hash', value: str
   let query = getDatabase().from('auth_failures').select('id').eq(column, value).gte('attempted_at', since).limit(limit);
   if (action) query = query.eq('action', action);
   const { data, error } = await query;
-  if (error) throw new Error(`Auth throttle read failed: ${error.message}`);
+  if (error) throw new Error(`Auth throttle read failed: ${databaseError(error)}`);
   return Array.isArray(data) ? data.length : 0;
 }
 
@@ -56,19 +69,20 @@ export async function checkAuthRateLimit(email: string, action: AuthAction, requ
 
 export async function recordAuthFailure(email: string, action: AuthAction, request: Request) {
   const { subjectHash, networkHash } = hashes(email, request);
-  const { error } = await getDatabase().from('auth_failures').insert({
+  const { data, error } = await getDatabase().from('auth_failures').insert({
     subject_hash: subjectHash,
     network_hash: networkHash,
     action,
     attempted_at: new Date().toISOString(),
-  });
-  if (error) throw new Error(`Auth throttle write failed: ${error.message}`);
+  }).select('id').single();
+  if (error) throw new Error(`Auth throttle write failed: ${databaseError(error)}`);
+  if (!data?.id) throw new Error('Auth throttle write failed: insert returned no row.');
 }
 
 export async function clearSubjectAuthFailures(email: string, request: Request) {
   const { subjectHash } = hashes(email, request);
   const { error } = await getDatabase().from('auth_failures').delete().eq('subject_hash', subjectHash);
-  if (error) throw new Error(`Auth throttle cleanup failed: ${error.message}`);
+  if (error) throw new Error(`Auth throttle cleanup failed: ${databaseError(error)}`);
 }
 
 export const AUTH_THROTTLE_POLICY = {
