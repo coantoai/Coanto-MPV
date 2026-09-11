@@ -2,40 +2,75 @@ name: Deploy COANTO
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Deployment target
+        required: true
+        type: choice
+        options:
+          - preview
+          - production
+        default: preview
+      production_url:
+        description: Public production origin used by launch readiness
+        required: false
+        type: string
+        default: https://coanto.com
+      backup_confirmed:
+        description: Fresh restorable production backup/export verified
+        required: false
+        type: boolean
+        default: false
+      rollback_confirmed:
+        description: Previous known-good production deployment is available
+        required: false
+        type: boolean
+        default: false
+      rollback_sha:
+        description: Previous known-good production commit SHA
+        required: false
+        type: string
   push:
     branches: [staging]
-    tags: ['v*']
 
 permissions:
   contents: read
 
 env:
+  CI: true
+  BUN_VERSION: 1.4.2
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+concurrency:
+  group: coanto-deploy-${{ github.event_name }}-${{ github.ref }}-${{ inputs.target || 'preview' }}
+  cancel-in-progress: false
+
 jobs:
   deploy-preview:
-    if: github.ref == 'refs/heads/staging' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/staging' && (github.event_name == 'push' || inputs.target == 'preview')
     runs-on: ubuntu-latest
     environment: staging
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
       - run: bun install
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run test:smoke
       - run: bun run test:ai-contract
+      - run: bun run test:security
       - run: bun run build
       - name: Verify Vercel deployment wiring
         run: |
           [ -n "$VERCEL_ORG_ID" ] || { echo "VERCEL_ORG_ID=missing"; exit 1; }
           [ -n "$VERCEL_PROJECT_ID" ] || { echo "VERCEL_PROJECT_ID=missing"; exit 1; }
           [ -n "$VERCEL_TOKEN" ] || { echo "VERCEL_TOKEN=missing"; exit 1; }
-          echo "Vercel deployment credentials are present."
+          echo "Vercel preview deployment credentials are present."
       - name: Deploy preview
         run: |
           timeout 120s npx vercel@latest pull --yes --environment=preview --token="$VERCEL_TOKEN"
@@ -43,28 +78,85 @@ jobs:
           timeout 120s npx vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN"
 
   deploy-production:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 35
+    env:
+      COANTO_LAUNCH_MODE: validation
+      COANTO_SITE_URL: ${{ inputs.production_url }}
+      COANTO_RELEASE_SHA: ${{ github.sha }}
+      INSFORGE_URL: ${{ secrets.INSFORGE_URL }}
+      INSFORGE_API_KEY: ${{ secrets.INSFORGE_API_KEY }}
+      AUTH_RATE_LIMIT_SECRET: ${{ secrets.AUTH_RATE_LIMIT_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+      BING_SEARCH_V7_KEY: ${{ secrets.BING_SEARCH_V7_KEY }}
+      APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+      APIFY_MODE: ${{ vars.APIFY_MODE || 'fallback' }}
+      APIFY_ACTOR_ID: ${{ vars.APIFY_ACTOR_ID || 'apify/website-content-crawler' }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || 'gemini' }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || secrets.GEMINI_COANTO_ONE }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL || 'openrouter/auto' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-fable-5' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Require a main-branch release candidate
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main" || (echo "Production deployment must be dispatched from main." && exit 1)
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || (echo "Candidate commit is not on main." && exit 1)
+      - name: Enforce recovery confirmations
+        env:
+          BACKUP_CONFIRMED: ${{ inputs.backup_confirmed }}
+          ROLLBACK_CONFIRMED: ${{ inputs.rollback_confirmed }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          test "$BACKUP_CONFIRMED" = "true" || (echo "Fresh backup/export is not confirmed." && exit 1)
+          test "$ROLLBACK_CONFIRMED" = "true" || (echo "Rollback deployment is not confirmed." && exit 1)
+          test -n "$ROLLBACK_SHA" || (echo "rollback_sha is required." && exit 1)
+          test "$ROLLBACK_SHA" != "$GITHUB_SHA" || (echo "rollback_sha must differ from the release candidate." && exit 1)
+          git cat-file -e "$ROLLBACK_SHA^{commit}" || (echo "rollback_sha is not a repository commit." && exit 1)
+          git merge-base --is-ancestor "$ROLLBACK_SHA" "$GITHUB_SHA" || (echo "rollback_sha must be an ancestor of the release candidate." && exit 1)
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: ${{ env.BUN_VERSION }}
       - run: bun install
-      - run: bun run typecheck
-      - run: bun run lint
-      - run: bun run test:smoke
-      - run: bun run test:ai-contract
-      - run: bun run build
+      - name: Run production static gates
+        run: |
+          bun run test:launch-readiness
+          bun run typecheck
+          bun run lint
+          bun run test:security
+          bun run test:production-qa
+          bun run build
       - name: Verify Vercel deployment wiring
         run: |
           [ -n "$VERCEL_ORG_ID" ] || { echo "VERCEL_ORG_ID=missing"; exit 1; }
           [ -n "$VERCEL_PROJECT_ID" ] || { echo "VERCEL_PROJECT_ID=missing"; exit 1; }
           [ -n "$VERCEL_TOKEN" ] || { echo "VERCEL_TOKEN=missing"; exit 1; }
-          echo "Vercel deployment credentials are present."
+          echo "Vercel production deployment credentials are present."
+      - name: Validate live production dependencies before deployment
+        run: |
+          bun run launch:check
+          bun run launch:search-live
+          bun run test:insforge
+          bun run test:insforge-apify
+          bun run test:insforge-performance
+          bun run test:insforge-billing
+          bun run test:insforge-auth
+          bun run test:ai-live-e2e
       - name: Deploy production
         run: |
           timeout 120s npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
           timeout 180s npx vercel@latest build --prod --token="$VERCEL_TOKEN"
           timeout 120s npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+      - name: Record deployed release candidate
+        run: echo "PRODUCTION_DEPLOY_OK sha=$GITHUB_SHA origin=$COANTO_SITE_URL rollback=${{ inputs.rollback_sha }}"
