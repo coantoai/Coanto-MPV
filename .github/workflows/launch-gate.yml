@@ -45,6 +45,7 @@ jobs:
   static-gates:
     name: Static release gates
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -61,6 +62,7 @@ jobs:
   production-dependencies:
     name: Production dependency proof
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs: static-gates
     env:
       COANTO_LAUNCH_MODE: ${{ inputs.launch_mode }}
@@ -127,6 +129,7 @@ jobs:
   deployed-candidate:
     name: Deployed candidate proof
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: production-dependencies
     env:
       PRODUCTION_URL: ${{ inputs.production_url }}
@@ -136,20 +139,22 @@ jobs:
         run: |
           case "$PRODUCTION_URL" in https://*) ;; *) echo "Production URL must use HTTPS."; exit 1 ;; esac
           base="${PRODUCTION_URL%/}"
-          curl --fail --silent --show-error --proto '=https' --tlsv1.2 -D /tmp/health.headers "$base/api/health" > /tmp/health.json
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 -D /tmp/health.headers "$base/api/health" > /tmp/health.json
           grep -Eq '"ok":true' /tmp/health.json
           grep -Fq "$EXPECTED_SHA" /tmp/health.json || (echo "Deployed health endpoint does not report candidate SHA $EXPECTED_SHA." && cat /tmp/health.json && exit 1)
           grep -Eqi '^strict-transport-security: .+' /tmp/health.headers
           grep -Eqi '^x-content-type-options: nosniff' /tmp/health.headers
-          curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$base/api/ready" > /tmp/ready.json
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 "$base/api/ready" > /tmp/ready.json
           grep -Eq '"ready":true' /tmp/ready.json
           grep -Eq '"insforge":"ready"' /tmp/ready.json
       - name: Verify production security boundaries
         run: |
           base="${PRODUCTION_URL%/}"
-          code=$(curl --silent --show-error --proto '=https' --tlsv1.2 -o /tmp/auth.json -w '%{http_code}' "$base/api/auth"); test "$code" = "401"
-          code=$(curl --silent --show-error --proto '=https' --tlsv1.2 -o /tmp/cron.json -w '%{http_code}' "$base/api/monitoring-cron"); test "$code" = "401"
-          curl --fail --silent --show-error --proto '=https' --tlsv1.2 "$base/" > /tmp/home.html
+          curl_common="--silent --show-error --proto =https --tlsv1.2 --connect-timeout 10 --max-time 30"
+          code=$(curl $curl_common -o /tmp/auth.json -w '%{http_code}' "$base/api/auth"); test "$code" = "401"
+          code=$(curl $curl_common -o /tmp/cron.json -w '%{http_code}' "$base/api/monitoring-cron"); test "$code" = "401"
+          code=$(curl $curl_common -H 'Authorization: Bearer definitely-wrong-launch-secret' -o /tmp/cron-wrong.json -w '%{http_code}' "$base/api/monitoring-cron"); test "$code" = "401"
+          curl --fail --silent --show-error --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 "$base/" > /tmp/home.html
           test -s /tmp/home.html
       - name: Record launch gate result
         run: echo "LAUNCH_GATE_OK release=$EXPECTED_SHA origin=$PRODUCTION_URL mode=${{ inputs.launch_mode }} rollback=${{ inputs.rollback_sha }}"
