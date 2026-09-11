@@ -34,14 +34,29 @@ expect(!weakSecrets.ready, 'Launch must block weak operational secrets.');
 expect(weakSecrets.checks.filter((item) => item.status === 'block').some((item) => item.id === 'cron-secret'), 'Weak cron secret was not blocked.');
 expect(weakSecrets.checks.filter((item) => item.status === 'block').some((item) => item.id === 'auth-throttle-secret'), 'Weak auth secret was not blocked.');
 
+const reusedSecret = evaluateLaunchReadiness({ ...productionFixture, CRON_SECRET: productionFixture.AUTH_RATE_LIMIT_SECRET });
+expect(!reusedSecret.ready && reusedSecret.checks.some((item) => item.id === 'secret-separation' && item.status === 'block'), 'Launch must block reused operational secrets.');
+
 const wrongAi = evaluateLaunchReadiness({ ...productionFixture, AI_PROVIDER: 'openai' });
 expect(!wrongAi.ready && wrongAi.checks.some((item) => item.id === 'preferred-ai-provider' && item.status === 'block'), 'Preferred AI provider without its key must block launch.');
 
 const commercial = evaluateLaunchReadiness({ ...productionFixture, COANTO_LAUNCH_MODE: 'commercial' });
 expect(!commercial.ready && commercial.checks.some((item) => item.id === 'commercial-billing-adapter' && item.status === 'block'), 'Commercial launch must stay blocked until a real payment adapter lands.');
 
+const invalidMode = evaluateLaunchReadiness({ ...productionFixture, COANTO_LAUNCH_MODE: 'prod' });
+expect(!invalidMode.ready && invalidMode.checks.some((item) => item.id === 'launch-mode' && item.status === 'block'), 'Unknown launch mode must fail closed.');
+
 const insecure = evaluateLaunchReadiness({ ...productionFixture, COANTO_SITE_URL: 'http://coanto.com', INSFORGE_URL: 'http://backend.example.com' });
 expect(!insecure.ready, 'Non-HTTPS launch origins must be blocked.');
+
+const nonOrigin = evaluateLaunchReadiness({ ...productionFixture, COANTO_SITE_URL: 'https://coanto.com/app?x=1', INSFORGE_URL: 'https://backend.example.com/api' });
+expect(!nonOrigin.ready, 'Launch URLs must be exact origins, not credential/path/query-bearing URLs.');
+
+const missingRelease = evaluateLaunchReadiness({ ...productionFixture, COANTO_RELEASE_SHA: '' });
+expect(!missingRelease.ready && missingRelease.checks.some((item) => item.id === 'release-identity' && item.status === 'block'), 'Production release identity must be mandatory.');
+
+const invalidApifyMode = evaluateLaunchReadiness({ ...productionFixture, APIFY_MODE: 'sometimes' });
+expect(!invalidApifyMode.ready && invalidApifyMode.checks.some((item) => item.id === 'apify' && item.status === 'block'), 'Unknown Apify mode must fail closed.');
 
 const root = process.cwd();
 const gitignore = await readFile(join(root, '.gitignore'), 'utf8');
@@ -110,7 +125,11 @@ console.log('LAUNCH_READINESS_SMOKE_OK', JSON.stringify({
   validationReady: true,
   commercialBlockedUntilGateway: true,
   recoveryGate: true,
-  releaseIdentity: true,
+  releaseIdentityRequired: true,
+  strictLaunchMode: true,
+  strictOrigins: true,
+  secretSeparation: true,
+  apifyModeValidated: true,
   toolchainPinned: true,
   monitoringCronScheduled: true,
   productionGate: true,
