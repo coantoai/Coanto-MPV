@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { timingSafeEqual } from 'node:crypto';
 import { getDatabase } from '@/lib/database.server';
-import { getServerConfig } from '@/lib/config.server';
 import { executeMonitoringCheck } from '@/lib/monitoring-runner.server';
 import { apiSecurityHeaders } from '@/lib/http-security.server';
 
@@ -13,7 +12,7 @@ function json(request: Request, body: unknown, status = 200) {
 }
 
 function authorized(request: Request) {
-  const expected = getServerConfig().monitoring.cronSecret;
+  const expected = process.env['CRON_SECRET']?.trim() || '';
   if (!expected) return false;
   const provided = request.headers.get('x-cron-secret')?.trim() || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
   if (!provided) return false;
