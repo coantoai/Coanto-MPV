@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security]
+        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -49,6 +49,7 @@ jobs:
             alerts-reports) bun run test:alerts-reports ;;
             apify) bun run test:apify ;;
             security) bun run test:security ;;
+            performance-cost) bun run test:performance-cost ;;
           esac
 
   insforge-integration:
@@ -72,6 +73,8 @@ jobs:
         run: bun run test:insforge
       - name: Apply and verify Apify acquisition provenance schema
         run: bun run test:insforge-apify
+      - name: Apply and verify performance cost-control schema
+        run: bun run test:insforge-performance
 
   runtime-smoke:
     runs-on: ubuntu-latest
