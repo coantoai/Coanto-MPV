@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost, billing]
+        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost, billing, production-qa]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -51,6 +51,7 @@ jobs:
             security) bun run test:security ;;
             performance-cost) bun run test:performance-cost ;;
             billing) bun run test:billing ;;
+            production-qa) bun run test:production-qa ;;
           esac
 
   insforge-integration:
@@ -78,6 +79,8 @@ jobs:
         run: bun run test:insforge-performance
       - name: Apply and verify provider-neutral billing schema
         run: bun run test:insforge-billing
+      - name: Apply and verify durable authentication throttling
+        run: bun run test:insforge-auth
 
   runtime-smoke:
     runs-on: ubuntu-latest
@@ -112,9 +115,26 @@ jobs:
           grep -Eqi '^x-frame-options: DENY' /tmp/coanto-health.headers
           grep -Eqi '^cache-control: no-store' /tmp/coanto-health.headers
           grep -Eqi '^x-request-id: .+' /tmp/coanto-health.headers
+      - name: Validate readiness failure semantics without backend configuration
+        run: |
+          code=$(curl --silent --show-error -o /tmp/coanto-ready.json -D /tmp/coanto-ready.headers -w '%{http_code}' http://127.0.0.1:3000/api/ready)
+          test "$code" = "503"
+          grep -Eq '"ready":false' /tmp/coanto-ready.json
+          grep -Eq '"insforge":"unavailable"' /tmp/coanto-ready.json
+          grep -Eqi '^x-content-type-options: nosniff' /tmp/coanto-ready.headers
+          grep -Eqi '^cache-control: no-store' /tmp/coanto-ready.headers
+      - name: Validate unauthenticated and cross-origin boundaries
+        run: |
+          code=$(curl --silent --show-error -o /tmp/auth.json -w '%{http_code}' http://127.0.0.1:3000/api/auth); test "$code" = "401"
+          code=$(curl --silent --show-error -o /tmp/context.json -w '%{http_code}' http://127.0.0.1:3000/api/business-context); test "$code" = "401"
+          code=$(curl --silent --show-error -o /tmp/competitors.json -w '%{http_code}' http://127.0.0.1:3000/api/competitors); test "$code" = "401"
+          code=$(curl --silent --show-error -o /tmp/cron.json -D /tmp/cron.headers -w '%{http_code}' http://127.0.0.1:3000/api/monitoring-cron); test "$code" = "401"
+          grep -Eqi '^x-content-type-options: nosniff' /tmp/cron.headers
+          code=$(curl --silent --show-error -o /tmp/analyze.json -w '%{http_code}' -X POST -H 'Origin: http://127.0.0.1:3000' -H 'Content-Type: application/json' --data '{}' http://127.0.0.1:3000/api/analyze); test "$code" = "401"
+          code=$(curl --silent --show-error -o /tmp/cross-auth.json -w '%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' --data '{"action":"signin","email":"qa@example.com","password":"12345678"}' http://127.0.0.1:3000/api/auth); test "$code" = "403"
       - name: Validate product routes
         run: |
-          for path in /analysis /onboarding /competitors /decision /memory /monitoring /business-intelligence /alerts /reports /pricing /billing; do
+          for path in /analysis /onboarding /competitors /decision /memory /history /monitoring /business-intelligence /alerts /reports /pricing /billing /demo; do
             curl --fail --silent --show-error "http://127.0.0.1:3000${path}" > "/tmp/coanto-${path#/}.html"
             test -s "/tmp/coanto-${path#/}.html"
           done
