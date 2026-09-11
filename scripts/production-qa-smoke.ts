@@ -20,7 +20,7 @@ for(const name of await readdir(libDir)){
   const functions=count(source,/createServerFn\s*\(/g);
   if(!functions)continue;
   const guards=count(source,/\.middleware\(\[requireAuth\]\)/g);
-  expect(source.includes("from './auth-middleware'")||source.includes("from \"./auth-middleware\""),`${name}: requireAuth import missing.`);
+  expect(/import\s*\{\s*requireAuth\s*\}\s*from\s*['"][^'"]*auth-middleware['"]/.test(source),`${name}: requireAuth import missing.`);
   expect(guards===functions,`${name}: expected ${functions} authenticated server functions, found ${guards}.`);
   expect(source.includes('context.userId'),`${name}: authenticated user id is never consumed.`);
 }
@@ -71,8 +71,9 @@ for(const path of browserFiles){
 expect(browserViolations.length===0,`Browser production violations: ${browserViolations.join(', ')}`);
 
 // 6) Critical product routes must exist before launch.
+const routeNames=new Set(await readdir(join(root,'src','routes')));
 for(const route of ['index.tsx','analysis.tsx','onboarding.tsx','competitors.tsx','monitoring.tsx','business-intelligence.tsx','decision.tsx','alerts.tsx','reports.tsx','pricing.tsx','billing.tsx','auth.tsx']){
-  expect((await readdir(join(root,'src','routes'))).includes(route),`Critical route missing: ${route}`);
+  expect(routeNames.has(route),`Critical route missing: ${route}`);
 }
 
 console.log('PRODUCTION_QA_SMOKE_OK',JSON.stringify({
