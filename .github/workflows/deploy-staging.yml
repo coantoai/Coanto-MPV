@@ -81,7 +81,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.target == 'production'
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       COANTO_LAUNCH_MODE: validation
       COANTO_SITE_URL: ${{ inputs.production_url }}
@@ -157,6 +157,38 @@ jobs:
         run: |
           timeout 120s npx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
           timeout 180s npx vercel@latest build --prod --token="$VERCEL_TOKEN"
-          timeout 120s npx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          timeout 120s npx vercel@latest deploy --prebuilt --prod --env COANTO_RELEASE_SHA="$GITHUB_SHA" --build-env COANTO_RELEASE_SHA="$GITHUB_SHA" --token="$VERCEL_TOKEN"
+      - name: Verify canonical production candidate after deployment
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          ROLLBACK_SHA: ${{ inputs.rollback_sha }}
+        run: |
+          base="${COANTO_SITE_URL%/}"
+          verified=false
+          for attempt in {1..24}; do
+            if curl --fail --silent --show-error --max-time 10 --connect-timeout 5 --proto '=https' --tlsv1.2 -D /tmp/coanto-prod-health.headers "$base/api/health" > /tmp/coanto-prod-health.json \
+              && grep -Eq '"ok":true' /tmp/coanto-prod-health.json \
+              && grep -Fq "$EXPECTED_SHA" /tmp/coanto-prod-health.json \
+              && curl --fail --silent --show-error --max-time 10 --connect-timeout 5 --proto '=https' --tlsv1.2 "$base/api/ready" > /tmp/coanto-prod-ready.json \
+              && grep -Eq '"ready":true' /tmp/coanto-prod-ready.json \
+              && grep -Eq '"insforge":"ready"' /tmp/coanto-prod-ready.json; then
+              verified=true
+              break
+            fi
+            echo "Waiting for canonical production to expose release $EXPECTED_SHA (attempt $attempt/24)."
+            sleep 5
+          done
+          if [ "$verified" != "true" ]; then
+            echo "POST_DEPLOY_VERIFY_FAILED expected=$EXPECTED_SHA rollback=$ROLLBACK_SHA"
+            echo "Canonical production did not prove the deployed SHA/readiness within the bounded verification window."
+            exit 1
+          fi
+          grep -Eqi '^strict-transport-security: .+' /tmp/coanto-prod-health.headers
+          grep -Eqi '^x-content-type-options: nosniff' /tmp/coanto-prod-health.headers
+          code=$(curl --silent --show-error --max-time 10 --connect-timeout 5 --proto '=https' --tlsv1.2 -o /tmp/coanto-prod-auth.json -w '%{http_code}' "$base/api/auth")
+          test "$code" = "401"
+          code=$(curl --silent --show-error --max-time 10 --connect-timeout 5 --proto '=https' --tlsv1.2 -o /tmp/coanto-prod-cron.json -w '%{http_code}' "$base/api/monitoring-cron")
+          test "$code" = "401"
+          echo "POST_DEPLOY_VERIFY_OK sha=$EXPECTED_SHA origin=$base"
       - name: Record deployed release candidate
         run: echo "PRODUCTION_DEPLOY_OK sha=$GITHUB_SHA origin=$COANTO_SITE_URL rollback=${{ inputs.rollback_sha }}"
