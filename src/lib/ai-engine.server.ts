@@ -1,25 +1,273 @@
 import { validateAiOutput } from './ai-output.server';
+import { getCostPolicy } from './cost-policy.server';
 
 export type AiProvider = 'openai' | 'gemini' | 'openrouter' | 'anthropic';
-
 export type AiRun = { provider: AiProvider; model: string; text: string; sources: string[] };
+
 type JsonRecord = Record<string, unknown>;
+
 const jsonInstruction = `Return JSON only. Do not invent facts. Every material claim must be traceable to supplied evidence or a web source. Distinguish observed facts, estimates, inferences, recommendations, and unknowns. Prefer explicit uncertainty over filling gaps. The response must contain a non-empty competitors array; each competitor must include a name and URL. Never replace missing evidence with a guess.`;
-const providerEnv: Record<AiProvider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
-function requireEnv(name: string) { const value = process.env[name]?.trim(); if (!value) throw new Error(`Missing required environment variable: ${name}`); return value; }
+const providerEnv: Record<AiProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+};
+
+function requireEnv(name: string) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
 function record(value: unknown): JsonRecord { return value && typeof value === 'object' ? value as JsonRecord : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function stringValue(value: unknown): string { return typeof value === 'string' ? value : ''; }
-async function providerRequest(url: string, init: RequestInit, provider: string) { const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 45_000); try { return await fetch(url, { ...init, signal: controller.signal }); } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') throw new Error(`${provider} request timed out after 45 seconds.`); throw error instanceof Error ? error : new Error(`${provider} request failed.`); } finally { clearTimeout(timeout); } }
-async function providerError(response: Response, provider: string) { let detail = ''; try { const data = record(await response.json()); const error = record(data['error']); detail = stringValue(error['message']) || stringValue(data['message']); } catch {} throw new Error(`${provider} API request failed (${response.status})${detail ? `: ${detail.slice(0, 300)}` : '.'}`); }
-function textFromOpenAi(response: unknown): string { const data = record(response); const direct = stringValue(data['output_text']); if (direct.trim()) return direct; const parts: string[] = []; for (const item of array(data['output'])) { const message = record(item); if (message['type'] !== 'message') continue; for (const content of array(message['content'])) { const value = record(content); if (value['type'] === 'output_text') { const text = stringValue(value['text']); if (text) parts.push(text); } } } return parts.join('\n').trim(); }
-async function runOpenAi(prompt: string): Promise<AiRun> { const apiKey = requireEnv('OPENAI_API_KEY'); const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-5.6-luna'; const response = await providerRequest('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: `${jsonInstruction}\n\n${prompt}`, tools: [{ type: 'web_search_preview' }], include: ['web_search_call.action.sources'] }) }, 'OpenAI'); if (!response.ok) await providerError(response, 'OpenAI'); const data = await response.json(); const text = textFromOpenAi(data); if (!text) throw new Error('OpenAI returned no text output.'); const sources: string[] = []; for (const item of array(record(data)['output'])) { const value = record(item); if (value['type'] !== 'web_search_call') continue; for (const source of array(record(value['action'])['sources'])) { const url = stringValue(record(source)['url']); if (url) sources.push(url); } } return { provider: 'openai', model, text, sources: [...new Set(sources)] }; }
-function geminiSources(data: JsonRecord) { const sources: string[] = []; for (const candidate of array(data['candidates'])) { const metadata = record(record(candidate)['groundingMetadata']); for (const chunk of array(metadata['groundingChunks'])) { const web = record(record(chunk)['web']); const uri = stringValue(web['uri']); if (uri) sources.push(uri); } for (const support of array(metadata['groundingSupports'])) { for (const chunkIndex of array(record(support)['groundingChunkIndices'])) { const index = typeof chunkIndex === 'number' ? chunkIndex : Number(chunkIndex); const chunks = array(metadata['groundingChunks']); if (!Number.isInteger(index) || !chunks[index]) continue; const uri = stringValue(record(record(chunks[index])['web'])['uri']); if (uri) sources.push(uri); } } } return [...new Set(sources)]; }
-const geminiResponseSchema = { type: 'OBJECT', properties: { competitors: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, url: { type: 'STRING' }, why: { type: 'STRING' }, evidence: { type: 'STRING' }, sourceUrls: { type: 'ARRAY', items: { type: 'STRING' } }, relevance: { type: 'NUMBER' }, impact: { type: 'NUMBER' }, threat: { type: 'STRING' } }, required: ['name', 'url'] } }, signals: { type: 'ARRAY', items: { type: 'OBJECT' } }, scenarios: { type: 'ARRAY', items: { type: 'OBJECT' } }, trust: { type: 'ARRAY', items: { type: 'OBJECT' } }, unknowns: { type: 'ARRAY', items: { type: 'STRING' } }, summary: { type: 'STRING' }, next_action: { type: 'STRING' }, threat_level: { type: 'STRING' }, opportunity_level: { type: 'STRING' } }, required: ['competitors', 'signals', 'scenarios', 'trust', 'unknowns'] };
-async function runGemini(prompt: string): Promise<AiRun> { const apiKey = requireEnv('GEMINI_API_KEY'); const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.1-flash-lite'; const response = await providerRequest(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `${jsonInstruction}\n\n${prompt}` }] }], tools: [{ google_search: {} }], generationConfig: { responseMimeType: 'application/json', responseSchema: geminiResponseSchema, temperature: 0.1, maxOutputTokens: 12000 } }) }, 'Gemini'); if (!response.ok) await providerError(response, 'Gemini'); const data = record(await response.json()); const texts: string[] = []; for (const candidate of array(data['candidates'])) { const content = record(record(candidate)['content']); for (const part of array(content['parts'])) { const text = stringValue(record(part)['text']); if (text) texts.push(text); } } const text = texts.join('\n').trim(); if (!text) throw new Error('Gemini returned no text output.'); return { provider: 'gemini', model, text, sources: geminiSources(data) }; }
-async function runOpenRouter(prompt: string): Promise<AiRun> { const apiKey = requireEnv('OPENROUTER_API_KEY'); const model = process.env['OPENROUTER_MODEL']?.trim() || 'openrouter/auto'; const response = await providerRequest('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json', 'HTTP-Referer': process.env['COANTO_SITE_URL']?.trim() || 'https://coanto.com', 'X-Title': 'COANTO' }, body: JSON.stringify({ model, messages: [{ role: 'user', content: `${jsonInstruction}\n\n${prompt}` }], tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: 8 } }] }) }, 'OpenRouter'); if (!response.ok) await providerError(response, 'OpenRouter'); const data = record(await response.json()); const choices = array(data['choices']); const first = choices.length ? record(choices[0]) : {}; const message = record(first['message']); const text = stringValue(message['content']).trim(); if (!text) throw new Error('OpenRouter returned no text output.'); const sources: string[] = []; for (const annotation of array(message['annotations'])) { const url = stringValue(record(record(annotation)['url_citation'])['url']); if (url) sources.push(url); } return { provider: 'openrouter', model, text, sources: [...new Set(sources)] }; }
-async function runAnthropic(prompt: string): Promise<AiRun> { const apiKey = requireEnv('ANTHROPIC_API_KEY'); const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5'; const response = await providerRequest('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, body: JSON.stringify({ model, max_tokens: 12000, messages: [{ role: 'user', content: `${jsonInstruction}\n\n${prompt}` }], tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: 8 }] }) }, 'Anthropic'); if (!response.ok) await providerError(response, 'Anthropic'); const data = record(await response.json()); const texts = array(data['content']).map((item) => stringValue(record(item)['text'])).filter(Boolean); const text = texts.join('\n').trim(); if (!text) throw new Error('Anthropic returned no text output.'); const sources: string[] = []; for (const item of array(data['content'])) if (record(item)['type'] === 'web_search_tool_result') for (const source of array(record(item)['content'])) { const url = stringValue(record(source)['url']); if (url) sources.push(url); } return { provider: 'anthropic', model, text, sources: [...new Set(sources)] }; }
-export async function runAiProvider(provider: AiProvider, prompt: string): Promise<AiRun> { if (provider === 'openai') return runOpenAi(prompt); if (provider === 'gemini') return runGemini(prompt); if (provider === 'openrouter') return runOpenRouter(prompt); return runAnthropic(prompt); }
-export function configuredProviders(): AiProvider[] { return (Object.keys(providerEnv) as AiProvider[]).filter((provider) => Boolean(process.env[providerEnv[provider]]?.trim())); }
-function parseCandidate(text: string) { const cleaned = text.replace(/^\uFEFF/, '').replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim(); const start = cleaned.indexOf('{'); const end = cleaned.lastIndexOf('}'); if (start < 0 || end <= start) throw new Error('AI returned no JSON object.'); return validateAiOutput(JSON.parse(cleaned.slice(start, end + 1))); }
-export async function runResearchAnalysis(prompt: string): Promise<AiRun> { const configured = configuredProviders(); if (!configured.length) throw new Error('No independent AI provider is configured.'); const requested = (process.env['AI_PROVIDER'] || '').trim().toLowerCase() as AiProvider; const ordered = requested && configured.includes(requested) ? [requested, ...configured.filter((provider) => provider !== requested)] : configured; const failures: string[] = []; for (const provider of ordered) { try { const run = await runAiProvider(provider, prompt); parseCandidate(run.text); return run; } catch (error) { failures.push(`${provider}: ${error instanceof Error ? error.message : 'request failed'}`); } } throw new Error(`All configured AI providers failed. ${failures.join(' | ')}`.slice(0, 1200)); }
+
+async function providerRequest(url: string, init: RequestInit, provider: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error(`${provider} request timed out after 45 seconds.`);
+    throw error instanceof Error ? error : new Error(`${provider} request failed.`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function providerError(response: Response, provider: string) {
+  let detail = '';
+  try {
+    const data = record(await response.json());
+    const error = record(data['error']);
+    detail = stringValue(error['message']) || stringValue(data['message']);
+  } catch {}
+  throw new Error(`${provider} API request failed (${response.status})${detail ? `: ${detail.slice(0, 300)}` : '.'}`);
+}
+
+function textFromOpenAi(response: unknown): string {
+  const data = record(response);
+  const direct = stringValue(data['output_text']);
+  if (direct.trim()) return direct;
+  const parts: string[] = [];
+  for (const item of array(data['output'])) {
+    const message = record(item);
+    if (message['type'] !== 'message') continue;
+    for (const content of array(message['content'])) {
+      const value = record(content);
+      if (value['type'] === 'output_text') {
+        const text = stringValue(value['text']);
+        if (text) parts.push(text);
+      }
+    }
+  }
+  return parts.join('\n').trim();
+}
+
+async function runOpenAi(prompt: string): Promise<AiRun> {
+  const apiKey = requireEnv('OPENAI_API_KEY');
+  const model = process.env['OPENAI_MODEL']?.trim() || 'gpt-5.6-luna';
+  const policy = getCostPolicy();
+  const response = await providerRequest('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      input: `${jsonInstruction}\n\n${prompt}`,
+      max_output_tokens: policy.aiMaxOutputTokens,
+      tools: [{ type: 'web_search_preview' }],
+      include: ['web_search_call.action.sources'],
+    }),
+  }, 'OpenAI');
+  if (!response.ok) await providerError(response, 'OpenAI');
+  const data = await response.json();
+  const text = textFromOpenAi(data);
+  if (!text) throw new Error('OpenAI returned no text output.');
+  const sources: string[] = [];
+  for (const item of array(record(data)['output'])) {
+    const value = record(item);
+    if (value['type'] !== 'web_search_call') continue;
+    for (const source of array(record(value['action'])['sources'])) {
+      const url = stringValue(record(source)['url']);
+      if (url) sources.push(url);
+    }
+  }
+  return { provider: 'openai', model, text, sources: [...new Set(sources)] };
+}
+
+function geminiSources(data: JsonRecord) {
+  const sources: string[] = [];
+  for (const candidate of array(data['candidates'])) {
+    const metadata = record(record(candidate)['groundingMetadata']);
+    for (const chunk of array(metadata['groundingChunks'])) {
+      const web = record(record(chunk)['web']);
+      const uri = stringValue(web['uri']);
+      if (uri) sources.push(uri);
+    }
+    for (const support of array(metadata['groundingSupports'])) {
+      for (const chunkIndex of array(record(support)['groundingChunkIndices'])) {
+        const index = typeof chunkIndex === 'number' ? chunkIndex : Number(chunkIndex);
+        const chunks = array(metadata['groundingChunks']);
+        if (!Number.isInteger(index) || !chunks[index]) continue;
+        const uri = stringValue(record(record(chunks[index])['web'])['uri']);
+        if (uri) sources.push(uri);
+      }
+    }
+  }
+  return [...new Set(sources)];
+}
+
+const geminiResponseSchema = {
+  type: 'OBJECT',
+  properties: {
+    competitors: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, url: { type: 'STRING' }, why: { type: 'STRING' }, evidence: { type: 'STRING' }, sourceUrls: { type: 'ARRAY', items: { type: 'STRING' } }, relevance: { type: 'NUMBER' }, impact: { type: 'NUMBER' }, threat: { type: 'STRING' } }, required: ['name', 'url'] } },
+    signals: { type: 'ARRAY', items: { type: 'OBJECT' } },
+    scenarios: { type: 'ARRAY', items: { type: 'OBJECT' } },
+    trust: { type: 'ARRAY', items: { type: 'OBJECT' } },
+    unknowns: { type: 'ARRAY', items: { type: 'STRING' } },
+    summary: { type: 'STRING' },
+    next_action: { type: 'STRING' },
+    threat_level: { type: 'STRING' },
+    opportunity_level: { type: 'STRING' },
+  },
+  required: ['competitors', 'signals', 'scenarios', 'trust', 'unknowns'],
+};
+
+async function runGemini(prompt: string): Promise<AiRun> {
+  const apiKey = requireEnv('GEMINI_API_KEY');
+  const model = process.env['GEMINI_MODEL']?.trim() || 'gemini-3.1-flash-lite';
+  const policy = getCostPolicy();
+  const response = await providerRequest(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: `${jsonInstruction}\n\n${prompt}` }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: geminiResponseSchema,
+        temperature: 0.1,
+        maxOutputTokens: policy.aiMaxOutputTokens,
+      },
+    }),
+  }, 'Gemini');
+  if (!response.ok) await providerError(response, 'Gemini');
+  const data = record(await response.json());
+  const texts: string[] = [];
+  for (const candidate of array(data['candidates'])) {
+    const content = record(record(candidate)['content']);
+    for (const part of array(content['parts'])) {
+      const text = stringValue(record(part)['text']);
+      if (text) texts.push(text);
+    }
+  }
+  const text = texts.join('\n').trim();
+  if (!text) throw new Error('Gemini returned no text output.');
+  return { provider: 'gemini', model, text, sources: geminiSources(data) };
+}
+
+async function runOpenRouter(prompt: string): Promise<AiRun> {
+  const apiKey = requireEnv('OPENROUTER_API_KEY');
+  const model = process.env['OPENROUTER_MODEL']?.trim() || 'openrouter/auto';
+  const policy = getCostPolicy();
+  const response = await providerRequest('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env['COANTO_SITE_URL']?.trim() || 'https://coanto.com',
+      'X-Title': 'COANTO',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: policy.aiMaxOutputTokens,
+      messages: [{ role: 'user', content: `${jsonInstruction}\n\n${prompt}` }],
+      tools: [{ type: 'openrouter:web_search', parameters: { max_total_results: policy.aiWebSearchMaxUses } }],
+    }),
+  }, 'OpenRouter');
+  if (!response.ok) await providerError(response, 'OpenRouter');
+  const data = record(await response.json());
+  const choices = array(data['choices']);
+  const first = choices.length ? record(choices[0]) : {};
+  const message = record(first['message']);
+  const text = stringValue(message['content']).trim();
+  if (!text) throw new Error('OpenRouter returned no text output.');
+  const sources: string[] = [];
+  for (const annotation of array(message['annotations'])) {
+    const url = stringValue(record(record(annotation)['url_citation'])['url']);
+    if (url) sources.push(url);
+  }
+  return { provider: 'openrouter', model, text, sources: [...new Set(sources)] };
+}
+
+async function runAnthropic(prompt: string): Promise<AiRun> {
+  const apiKey = requireEnv('ANTHROPIC_API_KEY');
+  const model = process.env['ANTHROPIC_MODEL']?.trim() || 'claude-fable-5';
+  const policy = getCostPolicy();
+  const response = await providerRequest('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      max_tokens: policy.aiMaxOutputTokens,
+      messages: [{ role: 'user', content: `${jsonInstruction}\n\n${prompt}` }],
+      tools: [{ type: 'web_search_20260318', name: 'web_search', max_uses: policy.aiWebSearchMaxUses }],
+    }),
+  }, 'Anthropic');
+  if (!response.ok) await providerError(response, 'Anthropic');
+  const data = record(await response.json());
+  const texts = array(data['content']).map((item) => stringValue(record(item)['text'])).filter(Boolean);
+  const text = texts.join('\n').trim();
+  if (!text) throw new Error('Anthropic returned no text output.');
+  const sources: string[] = [];
+  for (const item of array(data['content'])) {
+    if (record(item)['type'] !== 'web_search_tool_result') continue;
+    for (const source of array(record(item)['content'])) {
+      const url = stringValue(record(source)['url']);
+      if (url) sources.push(url);
+    }
+  }
+  return { provider: 'anthropic', model, text, sources: [...new Set(sources)] };
+}
+
+export async function runAiProvider(provider: AiProvider, prompt: string): Promise<AiRun> {
+  if (provider === 'openai') return runOpenAi(prompt);
+  if (provider === 'gemini') return runGemini(prompt);
+  if (provider === 'openrouter') return runOpenRouter(prompt);
+  return runAnthropic(prompt);
+}
+
+export function configuredProviders(): AiProvider[] {
+  return (Object.keys(providerEnv) as AiProvider[]).filter((provider) => Boolean(process.env[providerEnv[provider]]?.trim()));
+}
+
+function parseCandidate(text: string) {
+  const cleaned = text.replace(/^\uFEFF/, '').replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('AI returned no JSON object.');
+  return validateAiOutput(JSON.parse(cleaned.slice(start, end + 1)));
+}
+
+export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
+  const policy = getCostPolicy();
+  if (prompt.length > policy.aiPromptMaxChars) throw new Error(`AI prompt exceeds configured budget (${policy.aiPromptMaxChars} characters).`);
+  const configured = configuredProviders();
+  if (!configured.length) throw new Error('No independent AI provider is configured.');
+  const requested = (process.env['AI_PROVIDER'] || '').trim().toLowerCase() as AiProvider;
+  const ordered = requested && configured.includes(requested)
+    ? [requested, ...configured.filter((provider) => provider !== requested)]
+    : configured;
+  const failures: string[] = [];
+  for (const provider of ordered) {
+    try {
+      const run = await runAiProvider(provider, prompt);
+      parseCandidate(run.text);
+      return run;
+    } catch (error) {
+      failures.push(`${provider}: ${error instanceof Error ? error.message : 'request failed'}`);
+    }
+  }
+  throw new Error(`All configured AI providers failed. ${failures.join(' | ')}`.slice(0, 1200));
+}
