@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 
 const baseUrl=(process.env.INSFORGE_URL??'').trim().replace(/\/$/,'');
 const apiKey=(process.env.INSFORGE_API_KEY??'').trim();
-const version='20260911031500';
 if(!baseUrl||!apiKey)throw new Error('InsForge configuration required for performance persistence smoke.');
 
 async function request(path:string,init:RequestInit={}){
@@ -12,16 +11,23 @@ async function request(path:string,init:RequestInit={}){
   return body;
 }
 
-const migrations=await request('/api/database/migrations') as {migrations?:Array<{version?:string}>};
-if(!(migrations.migrations??[]).some(item=>item.version===version)){
-  const sql=await readFile(new URL('../migrations/20260911031500_performance_cost_controls.sql',import.meta.url),'utf8');
-  await request('/api/database/migrations',{method:'POST',body:JSON.stringify({version,name:'performance-cost-controls',sql})});
-  console.log(`INSFORGE_SCHEMA_APPLIED:${version}`);
-}else console.log(`INSFORGE_SCHEMA_ALREADY_APPLIED:${version}`);
+const requiredMigrations=[
+  {version:'20260911031500',name:'performance-cost-controls',file:'../migrations/20260911031500_performance_cost_controls.sql'},
+  {version:'20260911062500',name:'operation-running-dedupe',file:'../migrations/20260911062500_operation_running_dedupe.sql'},
+];
+for(const migration of requiredMigrations){
+  const migrations=await request('/api/database/migrations') as {migrations?:Array<{version?:string}>};
+  if(!(migrations.migrations??[]).some(item=>item.version===migration.version)){
+    const sql=await readFile(new URL(migration.file,import.meta.url),'utf8');
+    await request('/api/database/migrations',{method:'POST',body:JSON.stringify({version:migration.version,name:migration.name,sql})});
+    console.log(`INSFORGE_SCHEMA_APPLIED:${migration.version}`);
+  }else console.log(`INSFORGE_SCHEMA_ALREADY_APPLIED:${migration.version}`);
+}
 
 const tenantId=`ci-perf-${Date.now()}`;
 const inputHash='e'.repeat(64);
 const operationKey='f'.repeat(64);
+const alternateKey='a'.repeat(64);
 try{
   const inserted=await request('/api/database/records/operation_runs',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify([{
     user_id:tenantId,
@@ -35,7 +41,7 @@ try{
   const runId=inserted?.[0]?.id;
   if(!runId||inserted[0]?.user_id!==tenantId||inserted[0]?.status!=='running')throw new Error('Operation run insert failed.');
 
-  let duplicateRejected=false;
+  let sameKeyRejected=false;
   try{
     await request('/api/database/records/operation_runs',{method:'POST',body:JSON.stringify([{
       user_id:tenantId,
@@ -46,8 +52,22 @@ try{
       cost_units:1,
       expires_at:new Date(Date.now()+600000).toISOString(),
     }])});
-  }catch{duplicateRejected=true;}
-  if(!duplicateRejected)throw new Error('Duplicate operation key was not rejected.');
+  }catch{sameKeyRejected=true;}
+  if(!sameKeyRejected)throw new Error('Duplicate operation key was not rejected.');
+
+  let sameInputRejected=false;
+  try{
+    await request('/api/database/records/operation_runs',{method:'POST',body:JSON.stringify([{
+      user_id:tenantId,
+      operation:'analysis',
+      input_hash:inputHash,
+      operation_key:alternateKey,
+      status:'running',
+      cost_units:1,
+      expires_at:new Date(Date.now()+600000).toISOString(),
+    }])});
+  }catch{sameInputRejected=true;}
+  if(!sameInputRejected)throw new Error('Concurrent duplicate input with a different operation key was not rejected.');
 
   await request(`/api/database/records/operation_runs?id=eq.${encodeURIComponent(runId)}&user_id=eq.${encodeURIComponent(tenantId)}`,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({status:'succeeded',result_json:{probe:true},completed_at:new Date().toISOString(),updated_at:new Date().toISOString()})});
   const rows=await request(`/api/database/records/operation_runs?user_id=eq.${encodeURIComponent(tenantId)}&operation=eq.analysis&input_hash=eq.${inputHash}&select=id,user_id,status,result_json,cost_units&limit=3`) as Array<{user_id?:string;status?:string;result_json?:{probe?:boolean};cost_units?:number}>;
