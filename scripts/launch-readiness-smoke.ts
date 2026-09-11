@@ -79,6 +79,12 @@ const verifyWorkflow = await readFile(join(root, '.github', 'workflows', 'deploy
 expect(verifyWorkflow.includes('BUN_VERSION: 1.4.2'), 'Main CI must use the pinned Bun toolchain.');
 expect(verifyWorkflow.includes('production-gate:') && verifyWorkflow.includes('PRODUCTION_GATE_OK'), 'Main CI must expose a single production gate after verification, runtime, and persistence checks.');
 
+const deployWorkflow = await readFile(join(root, '.github', 'workflows', 'deploy-staging.yml'), 'utf8');
+for (const invariant of ['workflow_dispatch', "inputs.target == 'production'", 'backup_confirmed', 'rollback_confirmed', 'git merge-base --is-ancestor', 'COANTO_RELEASE_SHA="$GITHUB_SHA"', 'Verify canonical production candidate after deployment', 'POST_DEPLOY_VERIFY_OK', '/api/health', '/api/ready']) {
+  expect(deployWorkflow.includes(invariant), `Production deploy workflow missing ${invariant}.`);
+}
+expect(!deployWorkflow.includes("tags: ['v*']"), 'Production must not deploy automatically from version tags.');
+
 const runbook = await readFile(join(root, 'docs', 'LAUNCH.md'), 'utf8');
 expect(runbook.includes('Validation launch') && runbook.includes('Commercial launch'), 'Launch profiles are undocumented.');
 expect(runbook.includes('Backup / recovery gate') && runbook.includes('Rollback'), 'Recovery/rollback runbook is incomplete.');
@@ -133,5 +139,6 @@ console.log('LAUNCH_READINESS_SMOKE_OK', JSON.stringify({
   toolchainPinned: true,
   monitoringCronScheduled: true,
   productionGate: true,
+  productionDeployPostVerify: true,
   secretLeakPatterns: 0,
 }));
