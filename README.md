@@ -8,6 +8,8 @@ COANTO is being built as an AI-assisted competitive intelligence platform for sm
 
 The production architecture and engineering invariants live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). InsForge is the target backend/persistence platform; Gemini is the current primary AI analysis provider, with provider adapters kept independent from product logic.
 
+Production go/no-go, backup, rollback, environment, and post-deploy procedures live in [`docs/LAUNCH.md`](docs/LAUNCH.md). A green build alone is not considered launch proof.
+
 ## Local development
 
 ```bash
@@ -27,9 +29,13 @@ npm run test:smoke
 npm run test:ai-contract
 npm run test:evidence
 npm run test:trust
+npm run test:production-qa
+npm run test:launch-readiness
 ```
 
-Live provider/integration tests require their corresponding credentials and may fail when an external provider has exhausted quota even when the application build is healthy.
+For an actual production release, run `bun run launch:check` with production environment variables and then use the manual **COANTO Launch Gate** workflow. The launch gate also requires live provider proof, backup confirmation, rollback confirmation, and post-deploy health/readiness verification.
+
+Live provider/integration tests require their corresponding credentials and may fail when an external provider has exhausted quota even when the application build is healthy. A public launch remains blocked until the required live dependencies pass.
 
 ## Core engineering rule
 
