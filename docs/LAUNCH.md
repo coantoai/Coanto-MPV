@@ -12,20 +12,24 @@ Use `COANTO_LAUNCH_MODE=validation` for an invite/beta release. The product can 
 
 Use `COANTO_LAUNCH_MODE=commercial` only after a real payment-provider adapter exists in code, verifies signed provider events, maps them to `NormalizedBillingEvent`, and passes its production integration tests. The current launch policy deliberately blocks this profile; setting an environment variable cannot bypass that code-level requirement.
 
+Any other `COANTO_LAUNCH_MODE` value is invalid and blocks launch. Production readiness fails closed on unknown modes rather than silently treating a typo as validation.
+
 ## Production environment contract
 
 Required for validation launch:
 
-- `COANTO_SITE_URL`: public HTTPS origin, normally `https://coanto.com`.
-- `INSFORGE_URL`: public HTTPS backend origin.
+- `COANTO_SITE_URL`: exact public HTTPS origin, normally `https://coanto.com`; no credentials, path, query, or fragment.
+- `INSFORGE_URL`: exact public HTTPS backend origin; no credentials, path, query, or fragment.
 - `INSFORGE_API_KEY`: server-only InsForge project key.
-- `AUTH_RATE_LIMIT_SECRET`: independent random secret, at least 32 characters. Do not reuse the InsForge key.
-- `CRON_SECRET`: random secret, at least 32 characters.
+- `AUTH_RATE_LIMIT_SECRET`: independent random secret, at least 32 characters. Do not reuse the InsForge key or cron secret.
+- `CRON_SECRET`: independent random secret, at least 32 characters.
 - `AI_PROVIDER` plus the matching provider key. At least one working AI provider is required.
 - At least one of `BRAVE_SEARCH_API_KEY` or `BING_SEARCH_V7_KEY` for competitor discovery.
-- `COANTO_RELEASE_SHA` should identify the deployed commit when the platform does not automatically expose a commit SHA.
+- `COANTO_RELEASE_SHA` (or an equivalent trusted platform commit SHA) must identify the deployed commit. Launch is blocked if release identity is missing or malformed.
 
-Apify is optional in validation mode. Without it, direct acquisition still runs, but difficult JavaScript-heavy pages can have reduced coverage. If `APIFY_MODE=preferred`, `APIFY_TOKEN` is mandatory.
+`AUTH_RATE_LIMIT_SECRET`, `CRON_SECRET`, and `INSFORGE_API_KEY` must be distinct values. Reusing one credential across roles weakens blast-radius isolation and is a launch blocker.
+
+Apify is optional in validation mode. `APIFY_MODE` must be exactly `off`, `fallback`, or `preferred`. Without a token, direct acquisition can still run in `off`/`fallback`, but difficult JavaScript-heavy pages can have reduced coverage. If `APIFY_MODE=preferred`, `APIFY_TOKEN` is mandatory.
 
 Never put server secrets in browser variables or commit local `.env` files. `.gitignore` protects local environment files, but secret rotation is still required if a secret is ever committed or printed.
 
@@ -33,7 +37,7 @@ Never put server secrets in browser variables or commit local `.env` files. `.gi
 
 Before a public release:
 
-1. Main branch CI must be green, including production QA, build, security, runtime smoke, and real InsForge integration.
+1. Main branch CI must be green, including production QA, build, security, launch-readiness, runtime smoke, real InsForge integration, and the aggregate Production gate.
 2. Run `bun run launch:check` with the actual production environment. It must report zero blockers.
 3. Run the manual **COANTO Launch Gate** workflow for the exact release SHA. It requires explicit backup and rollback confirmations.
 4. The live AI E2E must pass against a real provider. A configured key is not enough; quota and model availability must be proven at launch time.
@@ -50,7 +54,7 @@ The launch gate therefore requires an explicit `backup_confirmed=true` acknowled
 
 ## Rollback
 
-Before deployment, record the previous known-good production commit SHA and deployment identifier. The launch gate requires a non-empty rollback SHA that is different from the candidate release.
+Before deployment, record the previous known-good production commit SHA and deployment identifier. The launch gate requires a non-empty rollback SHA that is different from the candidate release and verifies that it is an ancestor of the candidate commit.
 
 If post-deploy checks fail:
 
@@ -64,6 +68,8 @@ If post-deploy checks fail:
 ## Observability minimum
 
 `/api/health` and `/api/ready` expose non-secret release identity (`sha`, short SHA, environment) so an incident can be mapped to a deployed commit. API responses already carry request IDs. Production logs must preserve those request IDs and must never log provider tokens, auth cookies, raw passwords, or API keys.
+
+A valid release SHA is mandatory at launch. “unknown” is acceptable for local development but not for a production release candidate.
 
 ## Known external launch blockers
 
