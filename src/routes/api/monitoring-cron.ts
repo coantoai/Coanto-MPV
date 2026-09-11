@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { getDatabase } from '@/lib/database.server';
 import { executeMonitoringCheck } from '@/lib/monitoring-runner.server';
 import { apiSecurityHeaders } from '@/lib/http-security.server';
+import { pruneOperationRuns } from '@/lib/operation-guard.server';
 
 const MAX_TARGETS_PER_RUN = 20;
 const CONCURRENCY = 4;
@@ -40,6 +41,14 @@ async function runMonitoringCron(request: Request) {
     results.push(...await Promise.all(rows.slice(index, index + CONCURRENCY).map((target) => executeMonitoringCheck(target, 'scheduled'))));
   }
 
+  let maintenance: { ok: boolean; retentionDays?: number; staleRunningGraceHours?: number; completedAt?: string; error?: string };
+  try {
+    maintenance = await pruneOperationRuns();
+  } catch (error) {
+    console.error('operation-retention-maintenance-failed', error instanceof Error ? error.message : 'unknown error');
+    maintenance = { ok: false, error: 'operation-retention-maintenance-failed' };
+  }
+
   return json(request, {
     ok: true,
     checkedAt: new Date().toISOString(),
@@ -49,6 +58,7 @@ async function runMonitoringCron(request: Request) {
     duplicatesSuppressed: results.filter((item) => item.suppressedDuplicate).length,
     failed: results.filter((item) => !item.ok).length,
     highSeverity: results.filter((item) => item.severity === 'high').length,
+    maintenance,
     results: results.map(({ event, ...item }) => ({ ...item, eventId: event?.id ?? null })),
   });
 }
