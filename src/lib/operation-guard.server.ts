@@ -1,6 +1,9 @@
 import { getDatabase } from './database.server';
 import { getCostPolicy, operationKey, utcDayStart } from './cost-policy.server';
 
+const OPERATION_RETENTION_DAYS = 30;
+const STALE_RUNNING_GRACE_HOURS = 24;
+
 export type AnalysisReservation =
   | { kind: 'started'; runId: string; cacheExpiresAt: string }
   | { kind: 'cached'; runId: string; result: Record<string, unknown>; cacheExpiresAt: string }
@@ -50,6 +53,34 @@ async function activeRunning(userId: string, inputHash: string, nowIso: string) 
     .maybeSingle();
   if (error) throw new Error(`Active analysis lookup failed: ${error.message}`);
   return data;
+}
+
+export async function pruneOperationRuns(now = new Date()) {
+  const db = getDatabase();
+  const nowIso = now.toISOString();
+  const staleRunningBefore = new Date(now.getTime() - STALE_RUNNING_GRACE_HOURS * 3_600_000).toISOString();
+  const retentionBefore = new Date(now.getTime() - OPERATION_RETENTION_DAYS * 86_400_000).toISOString();
+
+  const { error: staleError } = await db
+    .from('operation_runs')
+    .update({ status: 'failed', error_code: 'maintenance-stale-running', completed_at: nowIso, updated_at: nowIso })
+    .eq('status', 'running')
+    .lt('created_at', staleRunningBefore);
+  if (staleError) throw new Error(`Operation stale-run cleanup failed: ${staleError.message}`);
+
+  const { error: deleteError } = await db
+    .from('operation_runs')
+    .delete()
+    .neq('status', 'running')
+    .lt('created_at', retentionBefore);
+  if (deleteError) throw new Error(`Operation retention cleanup failed: ${deleteError.message}`);
+
+  return {
+    ok: true as const,
+    retentionDays: OPERATION_RETENTION_DAYS,
+    staleRunningGraceHours: STALE_RUNNING_GRACE_HOURS,
+    completedAt: nowIso,
+  };
 }
 
 export async function reserveAnalysisOperation(input: {
