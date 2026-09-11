@@ -25,6 +25,8 @@ const SEARCH_PROVIDERS = [
   ['brave', 'BRAVE_SEARCH_API_KEY'],
   ['bing', 'BING_SEARCH_V7_KEY'],
 ] as const;
+const LAUNCH_MODES = ['validation', 'commercial'] as const;
+const APIFY_MODES = ['off', 'fallback', 'preferred'] as const;
 
 // Stage 16 deliberately kept the billing core provider-neutral. Commercial launch
 // must remain blocked until a real signed provider adapter lands in code review.
@@ -36,15 +38,21 @@ function value(env: NodeJS.ProcessEnv, key: string) {
 function secretStrong(secret: string) {
   return secret.length >= 32;
 }
-function httpsPublicUrl(raw: string) {
+function exactPublicHttpsOrigin(raw: string) {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:') return false;
     const host = url.hostname.toLowerCase();
-    return host !== 'localhost' && host !== '127.0.0.1' && host !== '::1';
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
+    if (url.username || url.password || url.search || url.hash) return false;
+    if (url.pathname !== '/' && url.pathname !== '') return false;
+    return true;
   } catch {
     return false;
   }
+}
+function validReleaseSha(sha: string) {
+  return /^[a-f0-9]{7,40}$/i.test(sha);
 }
 function push(checks: LaunchReadinessCheck[], id: string, status: ReadinessStatus, message: string) {
   checks.push({ id, status, message });
@@ -56,6 +64,7 @@ export function launchMode(env: NodeJS.ProcessEnv = process.env): LaunchMode {
 
 export function evaluateLaunchReadiness(env: NodeJS.ProcessEnv = process.env): LaunchReadinessReport {
   const checks: LaunchReadinessCheck[] = [];
+  const rawLaunchMode = value(env, 'COANTO_LAUNCH_MODE').toLowerCase();
   const mode = launchMode(env);
   const insforgeUrl = value(env, 'INSFORGE_URL');
   const insforgeKey = value(env, 'INSFORGE_API_KEY');
@@ -65,15 +74,22 @@ export function evaluateLaunchReadiness(env: NodeJS.ProcessEnv = process.env): L
   const preferredAi = value(env, 'AI_PROVIDER').toLowerCase() || 'gemini';
   const configuredAiProviders: string[] = AI_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
   const configuredSearchProviders: string[] = SEARCH_PROVIDERS.filter(([, key]) => Boolean(value(env, key))).map(([provider]) => provider);
-  const siteOriginReady = httpsPublicUrl(siteUrl);
-  const insforgeOriginReady = httpsPublicUrl(insforgeUrl);
+  const siteOriginReady = exactPublicHttpsOrigin(siteUrl);
+  const insforgeOriginReady = exactPublicHttpsOrigin(insforgeUrl);
 
-  push(checks, 'launch-mode', 'pass', `Launch profile: ${mode}.`);
-  push(checks, 'site-origin', siteOriginReady ? 'pass' : 'block', siteOriginReady ? 'Public site origin is HTTPS.' : 'COANTO_SITE_URL must be a public HTTPS URL.');
-  push(checks, 'insforge-url', insforgeOriginReady ? 'pass' : 'block', insforgeOriginReady ? 'InsForge origin is HTTPS.' : 'INSFORGE_URL must be a public HTTPS URL.');
+  const launchModeValid = (LAUNCH_MODES as readonly string[]).includes(rawLaunchMode);
+  push(checks, 'launch-mode', launchModeValid ? 'pass' : 'block', launchModeValid ? `Launch profile: ${mode}.` : 'COANTO_LAUNCH_MODE must be exactly validation or commercial.');
+  push(checks, 'site-origin', siteOriginReady ? 'pass' : 'block', siteOriginReady ? 'Public site origin is an exact HTTPS origin.' : 'COANTO_SITE_URL must be a public HTTPS origin with no credentials, path, query, or fragment.');
+  push(checks, 'insforge-url', insforgeOriginReady ? 'pass' : 'block', insforgeOriginReady ? 'InsForge origin is an exact HTTPS origin.' : 'INSFORGE_URL must be a public HTTPS origin with no credentials, path, query, or fragment.');
   push(checks, 'insforge-key', insforgeKey.startsWith('ik_') && insforgeKey.length >= 12 ? 'pass' : 'block', insforgeKey.startsWith('ik_') && insforgeKey.length >= 12 ? 'InsForge project key is configured.' : 'INSFORGE_API_KEY is missing or malformed.');
   push(checks, 'auth-throttle-secret', secretStrong(authSecret) ? 'pass' : 'block', secretStrong(authSecret) ? 'Independent auth-throttle secret is configured.' : 'AUTH_RATE_LIMIT_SECRET must be an independent secret with at least 32 characters.');
   push(checks, 'cron-secret', secretStrong(cronSecret) ? 'pass' : 'block', secretStrong(cronSecret) ? 'Monitoring cron secret is launch-grade.' : 'CRON_SECRET must contain at least 32 characters.');
+
+  const operationalSecretsDistinct = Boolean(authSecret && cronSecret && insforgeKey)
+    && authSecret !== cronSecret
+    && authSecret !== insforgeKey
+    && cronSecret !== insforgeKey;
+  push(checks, 'secret-separation', operationalSecretsDistinct ? 'pass' : 'block', operationalSecretsDistinct ? 'Operational secrets are independently scoped.' : 'AUTH_RATE_LIMIT_SECRET, CRON_SECRET, and INSFORGE_API_KEY must be distinct values.');
 
   push(checks, 'ai-provider', configuredAiProviders.length ? 'pass' : 'block', configuredAiProviders.length ? `Configured AI providers: ${configuredAiProviders.join(', ')}.` : 'At least one AI provider API key is required.');
   push(checks, 'preferred-ai-provider', configuredAiProviders.includes(preferredAi) ? 'pass' : 'block', configuredAiProviders.includes(preferredAi) ? `Preferred AI provider ${preferredAi} is configured.` : `AI_PROVIDER=${preferredAi} has no configured API key.`);
@@ -81,12 +97,15 @@ export function evaluateLaunchReadiness(env: NodeJS.ProcessEnv = process.env): L
 
   const apifyMode = value(env, 'APIFY_MODE').toLowerCase() || 'fallback';
   const apifyToken = value(env, 'APIFY_TOKEN');
-  if (apifyMode === 'preferred' && !apifyToken) push(checks, 'apify', 'block', 'APIFY_MODE=preferred requires APIFY_TOKEN.');
-  else if (apifyToken) push(checks, 'apify', 'pass', `Apify acquisition is configured in ${apifyMode || 'fallback'} mode.`);
+  const apifyModeValid = (APIFY_MODES as readonly string[]).includes(apifyMode);
+  if (!apifyModeValid) push(checks, 'apify', 'block', 'APIFY_MODE must be off, fallback, or preferred.');
+  else if (apifyMode === 'preferred' && !apifyToken) push(checks, 'apify', 'block', 'APIFY_MODE=preferred requires APIFY_TOKEN.');
+  else if (apifyToken) push(checks, 'apify', 'pass', `Apify acquisition is configured in ${apifyMode} mode.`);
   else push(checks, 'apify', 'warn', 'Apify is not configured; direct acquisition remains available but difficult pages may have reduced coverage.');
 
   const releaseSha = value(env, 'COANTO_RELEASE_SHA') || value(env, 'VERCEL_GIT_COMMIT_SHA') || value(env, 'GITHUB_SHA');
-  push(checks, 'release-identity', releaseSha.length >= 7 ? 'pass' : 'warn', releaseSha.length >= 7 ? 'Release commit identity is available for observability.' : 'Release SHA is not set; production incidents will be harder to map to a commit.');
+  const releaseReady = validReleaseSha(releaseSha);
+  push(checks, 'release-identity', releaseReady ? 'pass' : 'block', releaseReady ? 'Release commit identity is available for observability and rollback verification.' : 'A valid release commit SHA is required for production launch.');
 
   if (mode === 'commercial') {
     push(checks, 'commercial-billing-adapter', COMMERCIAL_BILLING_ADAPTER_IMPLEMENTED ? 'pass' : 'block', COMMERCIAL_BILLING_ADAPTER_IMPLEMENTED ? 'Signed production payment adapter is implemented.' : 'Commercial launch is blocked until a real signed payment-provider adapter is implemented and verified.');
