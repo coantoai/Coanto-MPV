@@ -1,4 +1,5 @@
 type RequiredKey = 'INSFORGE_URL' | 'INSFORGE_API_KEY';
+type SupportedAiProvider = 'gemini' | 'openai' | 'openrouter' | 'anthropic';
 
 type ServerConfig = {
   insforge: {
@@ -6,7 +7,7 @@ type ServerConfig = {
     apiKey: string;
   };
   ai: {
-    preferredProvider: string;
+    preferredProvider: SupportedAiProvider;
   };
   monitoring: {
     cronSecret?: string;
@@ -29,7 +30,16 @@ function normalizeUrl(value: string, name: string): string {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     throw new Error(`${name} must use HTTP(S).`);
   }
+  if (process.env['NODE_ENV'] === 'production' && url.protocol !== 'https:') {
+    throw new Error(`${name} must use HTTPS in production.`);
+  }
   return url.toString().replace(/\/$/, '');
+}
+
+function preferredAiProvider(): SupportedAiProvider {
+  const raw = process.env['AI_PROVIDER']?.trim().toLowerCase() || 'gemini';
+  if (raw === 'gemini' || raw === 'openai' || raw === 'openrouter' || raw === 'anthropic') return raw;
+  throw new Error('AI_PROVIDER must be gemini, openai, openrouter, or anthropic.');
 }
 
 /** Production configuration entrypoint. */
@@ -41,9 +51,13 @@ export function getServerConfig(): ServerConfig {
   }
 
   const cronSecret = process.env['CRON_SECRET']?.trim();
+  if (process.env['NODE_ENV'] === 'production' && cronSecret && cronSecret.length < 32) {
+    throw new Error('CRON_SECRET must contain at least 32 characters in production.');
+  }
+
   return {
     insforge: { url: insforgeUrl, apiKey: insforgeApiKey },
-    ai: { preferredProvider: process.env['AI_PROVIDER']?.trim().toLowerCase() || 'gemini' },
+    ai: { preferredProvider: preferredAiProvider() },
     monitoring: cronSecret ? { cronSecret } : {},
   };
 }
