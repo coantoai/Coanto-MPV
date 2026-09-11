@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Build / runtime output
+.output/
+dist/
+.vite/
+.vercel/
+coverage/
+
+# Logs and diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+ai-benchmark-report.json
+
+# Local tooling / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
