@@ -43,15 +43,29 @@ export const Route = createFileRoute('/api/auth')({
         if (contentLengthTooLarge(request, MAX_BODY)) return json(request, { error: 'Request too large.' }, 413);
         const raw = await request.text();
         if (utf8TooLarge(raw, MAX_BODY)) return json(request, { error: 'Request too large.' }, 413);
-        let body: { action?: string; email?: string; password?: string; redirectTo?: string };
+        let body: { action?: string; email?: string; password?: string; otp?: string; redirectTo?: string };
         try { body = JSON.parse(raw); } catch { return json(request, { error: 'Invalid request.' }, 400); }
         const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
         const password = typeof body.password === 'string' ? body.password : '';
-        if (!email || !password) return json(request, { error: 'Email and password are required.' }, 400);
-        if (email.length > MAX_EMAIL || password.length < 6 || password.length > MAX_PASSWORD) return json(request, { error: 'Invalid email or password.' }, 400);
-        const action = body.action === 'signup' ? 'signup' : body.action === 'signin' ? 'signin' : null;
+        const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
+        const action = body.action === 'signup' ? 'signup' : body.action === 'signin' ? 'signin' : body.action === 'verify-email' ? 'verify-email' : null;
         if (!action) return json(request, { error: 'Unsupported auth action.' }, 400);
+        if (!email || email.length > MAX_EMAIL) return json(request, { error: 'Valid email is required.' }, 400);
 
+        const client = publicAuthClient();
+        if (action === 'verify-email') {
+          if (!/^\d{6}$/.test(otp)) return json(request, { error: 'أدخل رمز التحقق المكوّن من 6 أرقام.' }, 400);
+          const { data, error } = await client.auth.verifyEmail({ email, otp });
+          if (error) {
+            console.warn('InsForge email verification rejected', { statusCode: error.statusCode });
+            return json(request, { error: 'رمز التحقق غير صحيح أو انتهت صلاحيته.' }, error.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 400);
+          }
+          const token = data?.accessToken;
+          if (!token) return json(request, { error: 'تم تأكيد البريد ولكن تعذّر إنشاء جلسة الدخول.' }, 502);
+          return json(request, { authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, token) });
+        }
+
+        if (!password || password.length < 6 || password.length > MAX_PASSWORD) return json(request, { error: 'Invalid email or password.' }, 400);
         let throttle;
         try { throttle = await checkAuthRateLimit(email, action, request); }
         catch (error) {
@@ -60,7 +74,6 @@ export const Route = createFileRoute('/api/auth')({
         }
         if (!throttle.allowed) return json(request, { error: 'Too many authentication attempts. Try again later.' }, 429, { 'retry-after': String(throttle.retryAfterSeconds) });
 
-        const client = publicAuthClient();
         if (action === 'signup') {
           const redirectTo = safeAuthRedirect(request, body.redirectTo);
           const { data, error } = await client.auth.signUp({ email, password, redirectTo });
