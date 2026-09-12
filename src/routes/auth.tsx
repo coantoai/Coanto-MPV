@@ -5,8 +5,10 @@ import { clientAuth } from "@/lib/auth-client";
 function AuthPage() {
   const nav = useNavigate();
   const [signup, setSignup] = useState(false);
+  const [verify, setVerify] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -19,13 +21,9 @@ function AuthPage() {
   }
 
   useEffect(() => {
-    void clientAuth
-      .getSession()
-      .then((session) => {
-        if (session) void continueAfterAuth();
-      })
-      .catch(() => undefined);
-    // continueAfterAuth intentionally uses the stable router navigate function.
+    void clientAuth.getSession().then((session) => {
+      if (session) void continueAfterAuth();
+    }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav]);
 
@@ -34,14 +32,17 @@ function AuthPage() {
     setBusy(true);
     setError("");
     try {
+      if (verify) {
+        await clientAuth.verifyEmail(email, otp);
+        await continueAfterAuth();
+        return;
+      }
       if (signup) {
-        const result = await clientAuth.signUp(
-          email,
-          password,
-          `${window.location.origin}/auth`,
-        );
+        const result = await clientAuth.signUp(email, password, `${window.location.origin}/auth`);
         if (!result.session) {
-          setError("تم إنشاء الحساب. تحقق من بريدك ثم سجّل الدخول.");
+          setVerify(true);
+          setPassword("");
+          setError("أرسلنا رمز تحقق إلى بريدك. أدخل الرمز المكوّن من 6 أرقام.");
           return;
         }
       } else {
@@ -59,12 +60,20 @@ function AuthPage() {
     <div dir="rtl" className="grid min-h-screen place-items-center bg-[#060910] p-4 text-white">
       <form onSubmit={submit} className="w-full max-w-md space-y-3 rounded-3xl border border-[#223148] bg-[#0d141f] p-6">
         <div className="text-xl font-black tracking-[3px] text-[#29d3bd]">COANTO</div>
-        <h1 className="text-2xl font-black">{signup ? "إنشاء حساب" : "تسجيل الدخول"}</h1>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
-        <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
-        <button disabled={busy} className="w-full rounded-xl bg-[#29d3bd] py-3 font-black text-[#06100e]">{busy ? "جارٍ..." : signup ? "إنشاء الحساب" : "دخول"}</button>
+        <h1 className="text-2xl font-black">{verify ? "تأكيد البريد الإلكتروني" : signup ? "إنشاء حساب" : "تسجيل الدخول"}</h1>
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} readOnly={verify} placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
+        {verify ? (
+          <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="رمز التحقق — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />
+        ) : (
+          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
+        )}
+        <button disabled={busy} className="w-full rounded-xl bg-[#29d3bd] py-3 font-black text-[#06100e]">{busy ? "جارٍ..." : verify ? "تأكيد الرمز" : signup ? "إنشاء الحساب" : "دخول"}</button>
         {error && <div className="rounded-xl border border-amber-300/30 p-3 text-xs text-amber-200">{error}</div>}
-        <button type="button" onClick={() => setSignup(!signup)} className="w-full text-xs text-[#91a2b8]">{signup ? "لديك حساب؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حسابًا"}</button>
+        {verify ? (
+          <button type="button" onClick={() => { setVerify(false); setSignup(false); setOtp(""); setError(""); }} className="w-full text-xs text-[#91a2b8]">العودة إلى تسجيل الدخول</button>
+        ) : (
+          <button type="button" onClick={() => { setSignup(!signup); setError(""); }} className="w-full text-xs text-[#91a2b8]">{signup ? "لديك حساب؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حسابًا"}</button>
+        )}
       </form>
     </div>
   );
