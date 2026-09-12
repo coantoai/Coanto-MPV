@@ -16,7 +16,9 @@ function json(request: Request, body: unknown, status = 200, headers: HeadersIni
 }
 function publicAuthClient() {
   const { insforge } = getServerConfig();
-  return createClient({ baseUrl: insforge.url });
+  const anonKey = process.env['INSFORGE_ANON_KEY']?.trim();
+  if (!anonKey) throw new Error('INSFORGE_ANON_KEY is required for public authentication.');
+  return createClient({ baseUrl: insforge.url, anonKey });
 }
 async function noteFailure(email: string, action: 'signin' | 'signup', request: Request) {
   try { await recordAuthFailure(email, action, request); }
