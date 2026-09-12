@@ -51,6 +51,16 @@ export const clientAuth = {
     return { session: body.userId ? { accessToken: '', userId: body.userId } : { accessToken: '' } };
   },
 
+  async verifyEmail(email: string, otp: string): Promise<AuthResult> {
+    const response = await fetch('/api/auth', {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'verify-email', email: email.trim(), otp: otp.trim() }),
+    });
+    const body = await responseBody(response);
+    if (!response.ok) throw new Error(body.error || 'تعذّر تأكيد البريد الإلكتروني.');
+    return { session: body.userId ? { accessToken: '', userId: body.userId } : { accessToken: '' } };
+  },
+
   async signOut(): Promise<void> {
     const response = await fetch('/api/auth', { method: 'DELETE', credentials: 'same-origin' });
     if (!response.ok) throw new Error('تعذّر تسجيل الخروج.');
