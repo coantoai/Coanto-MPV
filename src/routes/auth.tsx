@@ -56,12 +56,20 @@ function AuthPage() {
     }
   }
 
+  function openVerification() {
+    setVerify(true);
+    setSignup(false);
+    setPassword("");
+    setOtp("");
+    setError("أدخل البريد الذي سجلت به ورمز التحقق الذي وصلك.");
+  }
+
   return (
     <div dir="rtl" className="grid min-h-screen place-items-center bg-[#060910] p-4 text-white">
       <form onSubmit={submit} className="w-full max-w-md space-y-3 rounded-3xl border border-[#223148] bg-[#0d141f] p-6">
         <div className="text-xl font-black tracking-[3px] text-[#29d3bd]">COANTO</div>
         <h1 className="text-2xl font-black">{verify ? "تأكيد البريد الإلكتروني" : signup ? "إنشاء حساب" : "تسجيل الدخول"}</h1>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} readOnly={verify} placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
         {verify ? (
           <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="رمز التحقق — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />
         ) : (
@@ -72,7 +80,10 @@ function AuthPage() {
         {verify ? (
           <button type="button" onClick={() => { setVerify(false); setSignup(false); setOtp(""); setError(""); }} className="w-full text-xs text-[#91a2b8]">العودة إلى تسجيل الدخول</button>
         ) : (
-          <button type="button" onClick={() => { setSignup(!signup); setError(""); }} className="w-full text-xs text-[#91a2b8]">{signup ? "لديك حساب؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حسابًا"}</button>
+          <>
+            <button type="button" onClick={() => { setSignup(!signup); setError(""); }} className="w-full text-xs text-[#91a2b8]">{signup ? "لديك حساب؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حسابًا"}</button>
+            <button type="button" onClick={openVerification} className="w-full text-xs font-bold text-[#29d3bd]">عندي رمز تحقق</button>
+          </>
         )}
       </form>
     </div>
