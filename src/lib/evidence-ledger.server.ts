@@ -25,7 +25,7 @@ function recordFromSnapshot(snapshot: SiteSnapshot, role: 'baseline' | 'competit
       collector: 'coanto-analysis-pipeline',
       sourceType: snapshot.sourceType,
       title: snapshot.title.slice(0, 500),
-      provenanceEntries: snapshot.evidence.slice(0, 12),
+      provenanceEntries: snapshot.evidence.slice(0, 12).join('\n').slice(0, 8000),
     },
   });
   return { ...applyEvidenceVerification(record, new Date(observedAt)), role };
