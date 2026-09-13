@@ -1,8 +1,10 @@
 import { validateAiOutput } from '../src/lib/ai-output.server';
+import { enforceEvidence } from '../src/lib/trust.server';
+import type { SiteSnapshot } from '../src/lib/analyze.server';
 
 const valid = validateAiOutput({
   competitors: [{ name: 'Example Competitor', url: 'https://example.com', why: 'Targets the same buyers.', evidence: ['Observed product page'], sourceUrls: ['https://example.com/'] }],
-  signals: [{ title: 'Commercial signal', description: 'Observed offer change', impact: 'medium', sourceUrls: ['https://example.com/'] }],
+  signals: [{ title: 'Commercial signal', description: 'Observed offer change', competitor: 'Example Competitor', impact: 'medium', sourceUrls: ['https://example.com/'] }],
   priority_matrix: [{ title: 'Improve offer', zone: 'execute now', impact: 70, ease: 80 }],
   threats: [{ title: 'Competitor offer pressure', description: 'A verified competitor improved its offer.' }],
   opportunities: [{ title: 'Positioning gap', description: 'A gap is visible in the supplied evidence.' }],
@@ -26,6 +28,34 @@ const pulse = valid.decisionPulse as Record<string, Record<string, unknown>>;
 if (pulse?.threat?.title !== 'Competitor offer pressure' || pulse?.opportunity?.title !== 'Positioning gap' || pulse?.action?.title !== 'Test the clearest response today.') throw new Error('Decision pulse was not derived from validated AI output.');
 const snapshot = valid.snapshot as Record<string, unknown>;
 if (snapshot?.competitorCount !== 1 || snapshot?.meaningfulSignals !== 1) throw new Error('Analysis snapshot counts were not derived correctly.');
+
+const baseline: SiteSnapshot = {
+  url: 'https://target.example/', title: 'Target', description: 'Target store', h1: ['Target'], h2: [], text: 'Target products', sourceType: 'direct-site', evidence: ['Direct site observation: https://target.example/'],
+};
+const verifiedCompetitor: SiteSnapshot = {
+  url: 'https://example.com/', title: 'Example Competitor', description: 'Shop competing products', h1: ['Example Competitor'], h2: [], text: 'products shop checkout', sourceType: 'direct-site', evidence: ['Direct site observation: https://example.com/'],
+};
+const gatedInput = validateAiOutput({
+  competitors: [
+    { name: 'Example Competitor', url: 'https://example.com/', why: 'Verified overlap.' },
+    { name: 'Invented Competitor', url: 'https://invented.example/', why: 'Should not survive.' },
+  ],
+  signals: [
+    { title: 'Supported signal', description: 'Observed change', competitor: 'Example Competitor' },
+    { title: 'Unsupported signal', description: 'No linked source', competitor: 'Imaginary Brand' },
+  ],
+  scenarios: [], action_plan: [], priority_matrix: [], threats: [], opportunities: [], trust: [], unknowns: [],
+  summary: 'Summary', next_action: 'Monitor', threat_level: 'low', opportunity_level: 'medium',
+});
+const gated = enforceEvidence(gatedInput, baseline, [verifiedCompetitor], []);
+const gatedCompetitors = gated.competitors as Array<Record<string, unknown>>;
+if (gatedCompetitors.length !== 1 || gatedCompetitors[0]?.url !== 'https://example.com/') throw new Error('Evidence gate did not remove an unverified competitor.');
+const gatedSignals = gated.signals as Array<Record<string, unknown>>;
+if (gatedSignals.length !== 1 || gatedSignals[0]?.title !== 'Supported signal') throw new Error('Evidence gate did not remove an unlinked signal.');
+const gatedMetadata = gated.metadata as Record<string, unknown>;
+if (gatedMetadata?.claimLinkageChecked !== true || gatedMetadata?.sourceCount !== 2 || gatedMetadata?.evidenceStrength !== 'medium') throw new Error('Evidence confidence metadata is not calibrated by source coverage.');
+const gatedSnapshot = gated.snapshot as Record<string, unknown>;
+if (gatedSnapshot?.competitorCount !== 1 || gatedSnapshot?.meaningfulSignals !== 1) throw new Error('Post-gate snapshot counts were not recalculated.');
 
 let rejected = false;
 try {
