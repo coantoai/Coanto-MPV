@@ -23,6 +23,7 @@ function displayName(site: SiteSnapshot) {
   return raw || hostname(site.url);
 }
 function mapRow(row:any):DiscoveredCompetitor{return{id:String(row.id),domain:String(row.domain),name:String(row.name),url:String(row.url),sourceType:row.source_type,verificationStatus:row.verification_status,relevanceScore:Number(row.relevance_score)||0,rank:Number(row.rank)||0,reason:String(row.reason||''),evidence:Array.isArray(row.evidence)?row.evidence.map(String):[],lastSeenAt:String(row.last_seen_at)}}
+function mergeSnapshots(...groups:SiteSnapshot[][]){const byHost=new Map<string,SiteSnapshot>();for(const site of groups.flat()){const host=hostname(site.url);if(!host)continue;const existing=byHost.get(host);if(!existing||existing.sourceType==='search-index'&&site.sourceType==='direct-site')byHost.set(host,site);}return[...byHost.values()];}
 
 export async function listDiscoveredCompetitors(userId:string):Promise<DiscoveredCompetitor[]>{
   const {data,error}=await getDatabase().from('competitors').select('*').eq('user_id',userId).order('rank',{ascending:true}).order('relevance_score',{ascending:false});
@@ -37,15 +38,20 @@ export async function runCompetitorDiscovery(userId:string):Promise<DiscoveredCo
   if(!validation.ok||!validation.url)throw new Error('BUSINESS_URL_INVALID');
   const main=await getMainSnapshot(validation.url);
   const explicit=context.knownCompetitors.filter((value)=>validateTargetUrl(value).ok);
-  let candidates=await discoverCompetitors(main,explicit);
+
+  const grounded=await discoverCompetitorsWithGemini(main);
+  let candidates=mergeSnapshots(grounded.snapshots);
   let accepted=filterCommercialCompetitors(main,candidates,explicit);
-  if(!accepted.length&&process.env['GEMINI_API_KEY']?.trim()){
-    const grounded=await discoverCompetitorsWithGemini(main);
-    candidates=[...candidates,...grounded.snapshots];
+  console.info('Competitor discovery grounded pass',{geminiStatus:grounded.status,geminiCandidates:grounded.candidateCount,geminiSnapshots:grounded.snapshots.length,accepted:accepted.length});
+
+  if(!accepted.length){
+    const legacy=await discoverCompetitors(main,explicit);
+    candidates=mergeSnapshots(candidates,legacy);
     accepted=filterCommercialCompetitors(main,candidates,explicit);
-    console.info('Competitor discovery fallback',{geminiStatus:grounded.status,geminiCandidates:grounded.candidateCount,geminiSnapshots:grounded.snapshots.length,accepted:accepted.length});
+    console.info('Competitor discovery legacy fallback',{legacyCandidates:legacy.length,totalCandidates:candidates.length,accepted:accepted.length});
   }
   if(!accepted.length)throw new Error('NO_VERIFIED_COMPETITORS');
+
   const now=new Date().toISOString();
   const rows=accepted.map((site,index)=>({
     user_id:userId,
