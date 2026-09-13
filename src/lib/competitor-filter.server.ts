@@ -2,17 +2,30 @@ import { hostname, type SiteSnapshot } from './analyze.server';
 
 const obviousNonCompetitorHosts = ['csimarket.com','tracxn.com','similarweb.com','statista.com','companieshistory.com','marketing91.com','businessmodelanalyst.com','discobrands.co','econosa.com','yoursustainableguide.com','markets.apistemic.com','koalagains.com','ringly.io'];
 const categoryGroups = [
-  ['shoes','shoe','footwear','sneaker','sneakers','boots','sandals','running','runner','trainers'],
-  ['apparel','clothing','fashion','activewear','sportswear','wear','menswear','womenswear'],
-  ['beauty','cosmetics','skincare','makeup','fragrance'],['electronics','laptop','phone','mobile','computer','tech'],['grocery','groceries','supermarket','food','fresh'],['delivery','courier','logistics','shipping','delivery service'],['hotel','hotels','accommodation','lodging','travel'],['booking','reservation','reserve','tickets','flights'],['ride','rides','taxi','mobility','transport'],['music','streaming','podcast','audio'],['software','saas','platform','app','applications'],
+  ['shoes','shoe','footwear','sneaker','sneakers','boots','sandals','running shoes','trainers'],
+  ['apparel','clothing','fashion','activewear','sportswear','menswear','womenswear'],
+  ['beauty','cosmetics','skincare','makeup','fragrance'],
+  ['electronics','laptop','phone','mobile phone','computer','consumer tech'],
+  ['grocery','groceries','supermarket','food store','fresh food'],
+  // Do not use generic fulfillment words such as "shipping" as category terms:
+  // almost every ecommerce store ships products and that does not make it a logistics competitor.
+  ['courier','logistics','delivery service','last mile delivery','parcel delivery','freight'],
+  ['hotel','hotels','accommodation','lodging'],
+  ['travel booking','flight booking','hotel booking','ticket booking','reservation platform'],
+  ['ride hailing','taxi','mobility service','passenger transport'],
+  ['music streaming','podcast','audio streaming'],
+  ['software','saas','software platform','software application','business app'],
 ];
 const strongCommerceSignals=[/add\s+to\s+cart/i,/shopping\s+cart/i,/checkout/i,/buy\s+(now|online)/i,/shop\s+(now|online)/i,/products?/i,/collections?/i,/shipping/i,/returns?/i,/place\s+an\s+order/i,/order\s+(now|online)/i,/delivery/i,/\b(store|shop|marketplace|retail|ecommerce|shopping)\b/i,/\b(price|pricing)\b/i,/\b(book|reserve)\b/i];
 const editorialSignals=/\b(news|analysis|research|strategy|guide|review|reviews|alternatives|competitors|comparison|stock|investing|financial|salary|employees|funding|ratings?|similar\s+sites|market\s+data)\b/i;
 function textOf(site:SiteSnapshot){return `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0,12000)}`.toLowerCase();}
 function isObviousNonCompetitor(host:string){return obviousNonCompetitorHosts.some((blocked)=>host===blocked||host.endsWith(`.${blocked}`));}
+function escapeRegExp(value:string){return value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}
+function containsTerm(text:string,term:string){const pattern=escapeRegExp(term.trim()).replace(/\s+/g,'\\s+');return new RegExp(`(?:^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`,'i').test(text);}
 function commerceScore(site:SiteSnapshot){const text=textOf(site);return strongCommerceSignals.reduce((score,signal)=>score+(signal.test(text)?1:0),0);}
-function categoryMatches(main:SiteSnapshot,candidate:SiteSnapshot){const a=textOf(main),b=textOf(candidate);return categoryGroups.filter((g)=>g.some((t)=>a.includes(t))&&g.some((t)=>b.includes(t))).length;}
-function strongCategoryMatches(main:SiteSnapshot,candidate:SiteSnapshot){const a=textOf(main),b=textOf(candidate);return categoryGroups.filter((g)=>g.filter((t)=>a.includes(t)).length>=2&&g.filter((t)=>b.includes(t)).length>=2).length;}
+function groupTermCount(text:string,group:string[]){return group.reduce((count,term)=>count+(containsTerm(text,term)?1:0),0);}
+function categoryMatches(main:SiteSnapshot,candidate:SiteSnapshot){const a=textOf(main),b=textOf(candidate);return categoryGroups.filter((g)=>groupTermCount(a,g)>0&&groupTermCount(b,g)>0).length;}
+function strongCategoryMatches(main:SiteSnapshot,candidate:SiteSnapshot){const a=textOf(main),b=textOf(candidate);return categoryGroups.filter((g)=>groupTermCount(a,g)>=2&&groupTermCount(b,g)>=2).length;}
 function editorialScore(site:SiteSnapshot){return editorialSignals.test(`${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')}`)?1:0;}
 export function scoreCommercialCompetitor(main:SiteSnapshot,candidate:SiteSnapshot){const raw=commerceScore(candidate)+strongCategoryMatches(main,candidate)*6+categoryMatches(main,candidate)*2-editorialScore(candidate);return Math.max(0,Math.min(100,Math.round(raw*7)));}
 export function competitorReason(main:SiteSnapshot,candidate:SiteSnapshot){const overlap=categoryMatches(main,candidate),commerce=commerceScore(candidate);const evidence=candidate.sourceType==='direct-site'?'direct website evidence':'indexed public evidence';return `${overlap?`${overlap} category overlap${overlap>1?'s':''}`:'commercial overlap'}; ${commerce} commercial signals; ${evidence}.`;}
