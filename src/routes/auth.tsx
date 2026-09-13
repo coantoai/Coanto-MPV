@@ -2,10 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useState } from "react";
 import { clientAuth } from "@/lib/auth-client";
 
+type Mode = 'signin' | 'signup' | 'verify' | 'forgot' | 'reset';
 function AuthPage() {
   const nav = useNavigate();
-  const [signup, setSignup] = useState(false);
-  const [verify, setVerify] = useState(false);
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
@@ -19,72 +19,57 @@ function AuthPage() {
     const body = await response.json() as { completed?: boolean };
     return nav({ to: body.completed ? '/' : '/onboarding' });
   }
-
-  useEffect(() => {
-    void clientAuth.getSession().then((session) => {
-      if (session) void continueAfterAuth();
-    }).catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nav]);
+  useEffect(() => { void clientAuth.getSession().then((session) => { if (session) void continueAfterAuth(); }).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nav]);
 
   async function submit(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
+    e.preventDefault(); setBusy(true); setError("");
     try {
-      if (verify) {
-        await clientAuth.verifyEmail(email, otp);
-        await continueAfterAuth();
-        return;
+      if (mode === 'verify') { await clientAuth.verifyEmail(email, otp); await continueAfterAuth(); return; }
+      if (mode === 'forgot') {
+        await clientAuth.requestPasswordReset(email, `${window.location.origin}/auth`);
+        setOtp(''); setPassword(''); setMode('reset');
+        setError('أرسلنا رمزًا إلى بريدك. أدخل الرمز واختر كلمة مرور جديدة.'); return;
       }
-      if (signup) {
+      if (mode === 'reset') {
+        await clientAuth.resetPassword(email, otp, password);
+        setMode('signin'); setOtp(''); setPassword('');
+        setError('تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.'); return;
+      }
+      if (mode === 'signup') {
         const result = await clientAuth.signUp(email, password, `${window.location.origin}/auth`);
         if (!result.session) {
-          setVerify(true);
-          setPassword("");
-          setError("أرسلنا رمز تحقق إلى بريدك. أدخل الرمز المكوّن من 6 أرقام.");
-          return;
+          // InsForge sends the verification code as part of sign-up; show the code field immediately.
+          setMode('verify'); setPassword(''); setOtp('');
+          setError('أرسلنا رمز التحقق إلى بريدك. أدخله هنا لتكمل.'); return;
         }
-      } else {
-        await clientAuth.signIn(email, password);
-      }
+      } else { await clientAuth.signIn(email, password); }
       await continueAfterAuth();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "تعذّر إتمام العملية");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e) { setError(e instanceof Error ? e.message : "تعذّر إتمام العملية"); }
+    finally { setBusy(false); }
   }
 
-  function openVerification() {
-    setVerify(true);
-    setSignup(false);
-    setPassword("");
-    setOtp("");
-    setError("أدخل البريد الذي سجلت به ورمز التحقق الذي وصلك.");
-  }
+  const title = mode === 'verify' ? 'تأكيد البريد' : mode === 'signup' ? 'إنشاء حساب' : mode === 'forgot' ? 'استعادة كلمة المرور' : mode === 'reset' ? 'اختر كلمة مرور جديدة' : 'تسجيل الدخول';
+  const button = mode === 'verify' ? 'تأكيد الرمز' : mode === 'signup' ? 'إنشاء الحساب' : mode === 'forgot' ? 'إرسال الرمز' : mode === 'reset' ? 'تغيير كلمة المرور' : 'دخول';
+  const showCode = mode === 'verify' || mode === 'reset';
+  const showPassword = mode === 'signin' || mode === 'signup' || mode === 'reset';
 
   return (
     <div dir="rtl" className="grid min-h-screen place-items-center bg-[#060910] p-4 text-white">
       <form onSubmit={submit} className="w-full max-w-md space-y-3 rounded-3xl border border-[#223148] bg-[#0d141f] p-6">
         <div className="text-xl font-black tracking-[3px] text-[#29d3bd]">COANTO</div>
-        <h1 className="text-2xl font-black">{verify ? "تأكيد البريد الإلكتروني" : signup ? "إنشاء حساب" : "تسجيل الدخول"}</h1>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
-        {verify ? (
-          <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="رمز التحقق — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />
-        ) : (
-          <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="كلمة المرور" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
-        )}
-        <button disabled={busy} className="w-full rounded-xl bg-[#29d3bd] py-3 font-black text-[#06100e]">{busy ? "جارٍ..." : verify ? "تأكيد الرمز" : signup ? "إنشاء الحساب" : "دخول"}</button>
+        <h1 className="text-2xl font-black">{title}</h1>
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" readOnly={mode === 'verify' || mode === 'reset'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
+        {showCode && <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="الرمز — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />}
+        {showPassword && <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'reset' ? 'كلمة المرور الجديدة' : 'كلمة المرور'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />}
+        <button disabled={busy} className="w-full rounded-xl bg-[#29d3bd] py-3 font-black text-[#06100e]">{busy ? "جارٍ..." : button}</button>
         {error && <div className="rounded-xl border border-amber-300/30 p-3 text-xs text-amber-200">{error}</div>}
-        {verify ? (
-          <button type="button" onClick={() => { setVerify(false); setSignup(false); setOtp(""); setError(""); }} className="w-full text-xs text-[#91a2b8]">العودة إلى تسجيل الدخول</button>
-        ) : (
-          <>
-            <button type="button" onClick={() => { setSignup(!signup); setError(""); }} className="w-full text-xs text-[#91a2b8]">{signup ? "لديك حساب؟ سجّل الدخول" : "ليس لديك حساب؟ أنشئ حسابًا"}</button>
-            <button type="button" onClick={openVerification} className="w-full text-xs font-bold text-[#29d3bd]">عندي رمز تحقق</button>
-          </>
-        )}
+
+        {mode === 'signin' && <>
+          <button type="button" onClick={() => { setMode('forgot'); setPassword(''); setError(''); }} className="w-full text-xs font-bold text-[#29d3bd]">نسيت كلمة المرور؟</button>
+          <button type="button" onClick={() => { setMode('signup'); setError(''); }} className="w-full text-xs text-[#91a2b8]">ليس لديك حساب؟ أنشئ حسابًا</button>
+        </>}
+        {mode === 'signup' && <button type="button" onClick={() => { setMode('signin'); setError(''); }} className="w-full text-xs text-[#91a2b8]">لديك حساب؟ سجّل الدخول</button>}
+        {(mode === 'verify' || mode === 'forgot' || mode === 'reset') && <button type="button" onClick={() => { setMode('signin'); setOtp(''); setPassword(''); setError(''); }} className="w-full text-xs text-[#91a2b8]">العودة إلى تسجيل الدخول</button>}
       </form>
     </div>
   );
