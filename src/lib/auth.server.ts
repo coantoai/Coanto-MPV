@@ -3,6 +3,7 @@ import { getServerConfig } from './config.server';
 
 export const AUTH_COOKIE = 'coanto_access_token';
 const MAX_ACCESS_TOKEN_LENGTH = 8_192;
+const AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export type AuthPrincipal = {
   userId: string;
@@ -40,7 +41,7 @@ function secureCookie(request: Request): boolean {
 export function authCookie(request: Request, token: string): string {
   const safe = validToken(token);
   if (!safe) throw new Error('Invalid authentication token.');
-  return `${AUTH_COOKIE}=${encodeURIComponent(safe)}; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}`;
+  return `${AUTH_COOKIE}=${encodeURIComponent(safe)}; Path=/; HttpOnly; SameSite=Lax${secureCookie(request) ? '; Secure' : ''}; Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}`;
 }
 
 export function clearAuthCookie(request: Request): string {
