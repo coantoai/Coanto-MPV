@@ -1,6 +1,7 @@
 import { getDatabase } from './database.server';
 import { getBusinessContext } from './business-context.server';
 import { discoverCompetitors, getMainSnapshot, hostname, validateTargetUrl, type SiteSnapshot } from './analyze.server';
+import { discoverCompetitorsWithGemini } from './gemini-competitor-discovery.server';
 import { competitorReason, filterCommercialCompetitors, scoreCommercialCompetitor } from './competitor-filter.server';
 
 export type DiscoveredCompetitor = {
@@ -36,8 +37,14 @@ export async function runCompetitorDiscovery(userId:string):Promise<DiscoveredCo
   if(!validation.ok||!validation.url)throw new Error('BUSINESS_URL_INVALID');
   const main=await getMainSnapshot(validation.url);
   const explicit=context.knownCompetitors.filter((value)=>validateTargetUrl(value).ok);
-  const candidates=await discoverCompetitors(main,explicit);
-  const accepted=filterCommercialCompetitors(main,candidates,explicit);
+  let candidates=await discoverCompetitors(main,explicit);
+  let accepted=filterCommercialCompetitors(main,candidates,explicit);
+  if(!accepted.length&&process.env['GEMINI_API_KEY']?.trim()){
+    const grounded=await discoverCompetitorsWithGemini(main);
+    candidates=[...candidates,...grounded.snapshots];
+    accepted=filterCommercialCompetitors(main,candidates,explicit);
+    console.info('Competitor discovery fallback',{geminiStatus:grounded.status,geminiCandidates:grounded.candidateCount,geminiSnapshots:grounded.snapshots.length,accepted:accepted.length});
+  }
   if(!accepted.length)throw new Error('NO_VERIFIED_COMPETITORS');
   const now=new Date().toISOString();
   const rows=accepted.map((site,index)=>({
