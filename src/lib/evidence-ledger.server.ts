@@ -9,6 +9,7 @@ function snapshotContent(snapshot: SiteSnapshot) {
     snapshot.h1.length ? `H1: ${snapshot.h1.join(' | ')}` : '',
     snapshot.h2.length ? `H2: ${snapshot.h2.join(' | ')}` : '',
     `TEXT: ${snapshot.text}`,
+    snapshot.evidence.length ? `PROVENANCE:\n${snapshot.evidence.map((item) => `- ${item}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -24,6 +25,7 @@ function recordFromSnapshot(snapshot: SiteSnapshot, role: 'baseline' | 'competit
       collector: 'coanto-analysis-pipeline',
       sourceType: snapshot.sourceType,
       title: snapshot.title.slice(0, 500),
+      provenanceEntries: snapshot.evidence.slice(0, 12),
     },
   });
   return { ...applyEvidenceVerification(record, new Date(observedAt)), role };
