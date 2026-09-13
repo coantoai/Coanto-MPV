@@ -1,4 +1,4 @@
-import { discoverCompetitors, getMainSnapshot, hostname, normalizeUrl, parseJsonBlock, validateTargetUrl, type SiteSnapshot } from '../src/lib/analyze.server.ts';
+import { buildPrompt, discoverCompetitors, getMainSnapshot, hostname, normalizeUrl, parseJsonBlock, validateTargetUrl, type SiteSnapshot } from '../src/lib/analyze.server.ts';
 
 const originalFetch = globalThis.fetch;
 let passed = 0;
@@ -22,11 +22,16 @@ check('public https target accepted', validateTargetUrl('https://example.com').o
 check('localhost target rejected', validateTargetUrl('http://localhost:3000').ok === false);
 check('private IPv4 target rejected', validateTargetUrl('http://192.168.1.10').ok === false);
 check('JSON block parses fenced payload', parseJsonBlock('prefix {"ok":true} suffix').ok === true);
+check('JSON block handles braces inside strings', parseJsonBlock('noise {bad} then {"message":"a {brace} inside","ok":true} trailing').ok === true);
+check('JSON block selects first valid balanced object', parseJsonBlock('not-json {oops} {"first":1} and {"second":2}').first === 1);
 check('JSON block rejects missing object', (() => { try { parseJsonBlock('no json'); return false; } catch { return true; } })());
 
 const main: SiteSnapshot = {
   url: 'https://acme.test', title: 'Acme', description: 'Acme outdoor footwear', h1: ['Acme footwear'], h2: [], text: 'Outdoor footwear', sourceType: 'direct-site', evidence: ['Direct site observation']
 };
+const promptProbe = buildPrompt(main, [{ ...main, url: 'https://rival.test', title: 'Rival' }]);
+check('analysis prompt separates instructions with newlines', promptProbe.includes('\nCandidate evidence:') && promptProbe.includes('\nReturn JSON with'));
+check('analysis prompt timing contract is aligned', promptProbe.includes('today, week, or later'));
 
 let mode: 'normal' | 'blocked-main' | 'blocked-competitor' = 'normal';
 globalThis.fetch = (async (input: RequestInfo | URL) => {
