@@ -61,4 +61,4 @@ export const Route=createFileRoute('/api/analyze')({server:{handlers:{POST:async
     try{await completeAnalysisOperation(userId,reservation.runId,analysis);activeRun=null;}catch(error){console.error('Analysis cache completion failed',{traceId,error});}
     return json(request,traceId,analysis);
   }catch(error){await failRun('UNEXPECTED_ANALYSIS_FAILURE');console.error('Analysis request failed',{traceId,error});return json(request,traceId,{error:'حدث خطأ أثناء التحليل. حاول مرة أخرى.',code:'UNEXPECTED_ANALYSIS_FAILURE'},500);}
-}}}}});
+}}}});
