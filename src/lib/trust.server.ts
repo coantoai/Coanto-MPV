@@ -33,6 +33,10 @@ function cardFrom(row: Record<string, unknown>, fallbackTitle: string, fallbackD
     severity: text(row['severity']) || text(row['strength']) || text(row['priority']) || text(row['impact']) || fallbackLevel,
   };
 }
+function groundedSite(site: SiteSnapshot) {
+  return site.evidence.some((entry) => entry.startsWith('Gemini Google Search grounded competitor candidate:'))
+    && site.evidence.some((entry) => entry.startsWith('Google Search grounding source:'));
+}
 
 /** Evidence gate for AI output. */
 export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competitors: SiteSnapshot[], aiSourceUrls: string[] = []) {
@@ -50,7 +54,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     const candidate = hostname(url);
     const source = candidate ? evidenceByHost.get(candidate) : undefined;
     if (!candidate || candidate === mainHost || !allowed.has(candidate) || !source) return [];
-    const grounded = source.evidence.some((entry) => entry.startsWith('Gemini Google Search grounded competitor candidate:'));
+    const grounded = groundedSite(source);
     return [{
       ...item,
       url: source.url,
@@ -58,17 +62,28 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
       evidence: [...source.evidence],
       sourceUrls: safeSourceUrls(item['sourceUrls'], allowed, aiSources),
       evidenceNote: source.sourceType === 'direct-site'
-        ? 'هذه المعلومة مرتبطة بقراءة مباشرة للموقع.'
+        ? grounded
+          ? 'هذه المعلومة مرتبطة بقراءة مباشرة للموقع وبحث Google موثّق للمنافس نفسه.'
+          : 'هذه المعلومة مرتبطة بقراءة مباشرة للموقع.'
         : grounded
-          ? 'هذه المعلومة مرتبطة ببحث Google موثّق مع أدلة عامة؛ لم يتم تجاوز حماية الموقع.'
+          ? 'هذه المعلومة مرتبطة ببحث Google موثّق مع أدلة عامة للمنافس نفسه؛ لم يتم تجاوز حماية الموقع.'
           : 'هذه المعلومة مرتبطة بدليل مفهرس عام؛ لم يتم تجاوز حماية الموقع.',
     }];
   });
 
+  const allObservedSources = [main, ...competitors];
+  const directSourceCount = allObservedSources.filter((site) => site.sourceType === 'direct-site').length;
+  const indexedSourceCount = allObservedSources.filter((site) => site.sourceType === 'search-index').length;
+  const groundedCompetitorCount = competitors.filter(groundedSite).length;
+  const sourceCount = allObservedSources.length;
   const directEvidenceCount = competitors.filter((site) => site.sourceType === 'direct-site').reduce((count, site) => count + site.evidence.length, 0);
   const indexedEvidenceCount = competitors.filter((site) => site.sourceType === 'search-index').reduce((count, site) => count + site.evidence.length, 0);
   const evidenceCount = main.evidence.length + directEvidenceCount + indexedEvidenceCount;
-  const evidenceStrength = evidenceCount >= 8 && indexedEvidenceCount <= Math.max(2, directEvidenceCount) ? 'high' : evidenceCount >= 4 ? 'medium' : 'low';
+  const evidenceStrength = directSourceCount >= 3 && competitors.length >= 2
+    ? 'high'
+    : sourceCount >= 2 && (directSourceCount >= 1 || groundedCompetitorCount >= 1)
+      ? 'medium'
+      : 'low';
 
   const signalRows = objectList(result['signals']);
   const checkedSignals = signalRows.map((row) => {
@@ -88,7 +103,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   result['unknowns'] = [...new Set([
     ...unknowns,
     ...(competitors.some((site) => site.sourceType === 'search-index') ? ['بعض المنافسين مبنيون على أدلة عامة من البحث لأن الوصول المباشر غير متاح.'] : []),
-    ...(evidenceCount < 4 ? ['قوة الدليل محدودة؛ يجب عدم تحويل هذه النتيجة إلى حقيقة مؤكدة.'] : []),
+    ...(sourceCount < 2 ? ['قوة الدليل محدودة؛ يجب عدم تحويل هذه النتيجة إلى حقيقة مؤكدة.'] : []),
     ...(rejectedSignals.length ? [`تم حجب ${rejectedSignals.length} إشارة لم تحمل رابط مصدر صالحًا أو ارتباطًا واضحًا بمنافس ذي أدلة.`] : []),
   ])];
 
@@ -98,14 +113,15 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     { type: 'evidence-gate', status: 'passed', detail: 'تم حذف أي منافس لا يمكن ربطه بمجموعة الأدلة المكتشفة.' },
     { type: 'source-transparency', status: 'passed', detail: 'تم تنظيف روابط المصادر وربطها بالمصادر المسموح بها.' },
     { type: 'claim-linkage', status: rejectedSignals.length ? 'caution' : 'passed', detail: rejectedSignals.length ? `تم حجب ${rejectedSignals.length} إشارة غير مدعومة.` : 'كل الإشارات المعروضة مرتبطة بمصدر أو منافس ذي دليل.' },
-    { type: 'confidence-calibration', status: evidenceStrength === 'low' ? 'caution' : 'passed', detail: `قوة الثقة مشتقة من حجم الأدلة ونوعها: ${evidenceStrength}.` },
+    { type: 'confidence-calibration', status: evidenceStrength === 'low' ? 'caution' : 'passed', detail: `قوة الثقة مشتقة من عدد المصادر المستقلة ونوع الوصول إليها: ${evidenceStrength}.` },
   ];
 
   result['metadata'] = {
     ...record(result['metadata']),
     evidenceGate: 'passed', evidenceCount, directEvidenceCount, indexedEvidenceCount, evidenceStrength,
+    sourceCount, directSourceCount, indexedSourceCount, groundedCompetitorCount,
     rejectedUnsupportedSignals: rejectedSignals.length,
-    confidenceBasis: 'evidence-volume-and-source-type', provenanceAttached: true, claimLinkageChecked: true, aiTextAcceptedAsEvidence: false,
+    confidenceBasis: 'independent-source-coverage-and-directness', provenanceAttached: true, claimLinkageChecked: true, aiTextAcceptedAsEvidence: false,
   };
 
   const filteredCompetitors = objectList(result['competitors']);
@@ -120,8 +136,8 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   const action = firstObject(result['action_plan'] ?? result['actions']);
   result['decisionPulse'] = {
     ...existingPulse,
-    threat: Object.keys(record(existingPulse['threat'])).length ? record(existingPulse['threat']) : cardFrom(threat, 'لا يوجد تهديد حاسم بعد', 'راجع إشارات المنافسين قبل اتخاذ قرار دفاعي.', threatLevel),
-    opportunity: Object.keys(record(existingPulse['opportunity'])).length ? record(existingPulse['opportunity']) : cardFrom(opportunity, 'لا توجد فرصة حاسمة بعد', 'استمر في مراقبة الفروقات القابلة للاستغلال.', opportunityLevel),
+    threat: Object.keys(record(existingPulse['threat'])).length ? record(existingPulse['threat']) : cardFrom(threat, 'لا يوجد تهديد حاسم بعد', 'لا توجد أدلة كافية لرفع تهديد محدد إلى أولوية حاسمة.', threatLevel),
+    opportunity: Object.keys(record(existingPulse['opportunity'])).length ? record(existingPulse['opportunity']) : cardFrom(opportunity, 'لا توجد فرصة حاسمة بعد', 'لا توجد أدلة كافية لرفع فرصة محددة إلى أولوية حاسمة.', opportunityLevel),
     action: Object.keys(record(existingPulse['action'])).length ? record(existingPulse['action']) : cardFrom(action, text(result['next_action']) || 'راجع أعلى أولوية', text(result['next_action']) || 'ابدأ بالإجراء الأعلى أولوية والأوضح دليلًا.', text(action['priority']) || 'medium'),
   };
   return result;
