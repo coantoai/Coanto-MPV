@@ -16,7 +16,6 @@ const productionFixture: NodeJS.ProcessEnv = {
   CRON_SECRET: 'cron-'.padEnd(40, 'x'),
   AI_PROVIDER: 'gemini',
   GEMINI_API_KEY: 'configured-test-value',
-  BRAVE_SEARCH_API_KEY: 'configured-test-value',
   APIFY_MODE: 'off',
 };
 
@@ -24,10 +23,10 @@ const validation = evaluateLaunchReadiness(productionFixture);
 expect(validation.ready, `Validation fixture should be launchable, blockers=${validation.blockers}.`);
 expect(validation.mode === 'validation', 'Validation launch mode changed unexpectedly.');
 expect(validation.configuredAiProviders.includes('gemini'), 'Configured AI provider was not detected.');
-expect(validation.configuredSearchProviders.includes('brave'), 'Configured search provider was not detected.');
+expect(validation.configuredSearchProviders.includes('gemini-google-search'), 'Gemini Google Search discovery provider was not detected.');
 
-const missingSearch = evaluateLaunchReadiness({ ...productionFixture, BRAVE_SEARCH_API_KEY: '' });
-expect(!missingSearch.ready && missingSearch.checks.some((item) => item.id === 'search-provider' && item.status === 'block'), 'Launch must block without a configured discovery provider.');
+const missingSearch = evaluateLaunchReadiness({ ...productionFixture, GEMINI_API_KEY: '', AI_PROVIDER: 'openai', OPENAI_API_KEY: 'configured-test-value', BRAVE_SEARCH_API_KEY: '', BING_SEARCH_V7_KEY: '' });
+expect(!missingSearch.ready && missingSearch.checks.some((item) => item.id === 'search-provider' && item.status === 'block'), 'Launch must block without a configured grounded/search discovery provider.');
 
 const weakSecrets = evaluateLaunchReadiness({ ...productionFixture, CRON_SECRET: 'short', AUTH_RATE_LIMIT_SECRET: 'short' });
 expect(!weakSecrets.ready, 'Launch must block weak operational secrets.');
@@ -92,8 +91,6 @@ expect(runbook.includes('Live AI quota/availability'), 'External AI launch block
 
 const vercel = await readFile(join(root, 'vercel.json'), 'utf8');
 expect(vercel.includes('Strict-Transport-Security'), 'Production hosting config is missing HSTS.');
-// Vercel Hobby does not support the previous hourly cron. The project intentionally uses
-// the supported daily schedule until the hosting plan or scheduler changes.
 expect(vercel.includes('/api/monitoring-cron') && vercel.includes('0 0 * * *'), 'Production monitoring cron is not scheduled daily for the Hobby deployment.');
 
 const health = await readFile(join(root, 'src', 'routes', 'api', 'health.ts'), 'utf8');
@@ -111,36 +108,15 @@ async function filesUnder(directory: string): Promise<string[]> {
   return files;
 }
 
-const suspicious = [
-  /\bik_[A-Za-z0-9_-]{24,}\b/g,
-  /\bAIza[A-Za-z0-9_-]{20,}\b/g,
-  /\bsk-[A-Za-z0-9_-]{24,}\b/g,
-];
-const secretLeaks: string[] = [];
-for (const directory of [join(root, 'src'), join(root, 'scripts'), join(root, 'docs'), join(root, '.github')]) {
-  for (const path of await filesUnder(directory)) {
-    if (!/\.(?:ts|tsx|md|yml|yaml)$/.test(path)) continue;
-    const source = await readFile(path, 'utf8');
-    for (const pattern of suspicious) {
-      pattern.lastIndex = 0;
-      if (pattern.test(source)) secretLeaks.push(path);
-    }
+const suspicious = [/\bik_[A-Za-z0-9_-]{24,}\b/g,/\bAIza[A-Za-z0-9_-]{20,}\b/g,/\bsk-[A-Za-z0-9_-]{24,}\b/g];
+const secretLeaks:string[]=[];
+for(const directory of [join(root,'src'),join(root,'scripts'),join(root,'docs'),join(root,'.github')]){
+  for(const path of await filesUnder(directory)){
+    if(!/\.(?:ts|tsx|md|yml|yaml)$/.test(path))continue;
+    const source=await readFile(path,'utf8');
+    for(const pattern of suspicious){pattern.lastIndex=0;if(pattern.test(source))secretLeaks.push(path);}
   }
 }
-expect(secretLeaks.length === 0, `Possible committed production secret patterns found: ${[...new Set(secretLeaks)].join(', ')}`);
+expect(secretLeaks.length===0,`Possible committed production secret patterns found: ${[...new Set(secretLeaks)].join(', ')}`);
 
-console.log('LAUNCH_READINESS_SMOKE_OK', JSON.stringify({
-  validationReady: true,
-  commercialBlockedUntilGateway: true,
-  recoveryGate: true,
-  releaseIdentityRequired: true,
-  strictLaunchMode: true,
-  strictOrigins: true,
-  secretSeparation: true,
-  apifyModeValidated: true,
-  toolchainPinned: true,
-  monitoringCronScheduled: true,
-  productionGate: true,
-  productionDeployPostVerify: true,
-  secretLeakPatterns: 0,
-}));
+console.log('LAUNCH_READINESS_SMOKE_OK',JSON.stringify({validationReady:true,commercialBlockedUntilGateway:true,recoveryGate:true,releaseIdentityRequired:true,strictLaunchMode:true,strictOrigins:true,secretSeparation:true,apifyModeValidated:true,toolchainPinned:true,monitoringCronScheduled:true,geminiSearchPrimary:true,productionGate:true,productionDeployPostVerify:true,secretLeakPatterns:0}));
