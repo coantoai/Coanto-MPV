@@ -10,6 +10,7 @@ function record(value: unknown): JsonRecord { return value && typeof value === '
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
 function stringValue(value: unknown): string { return typeof value === 'string' ? value : ''; }
 function numberValue(value: unknown): number { const parsed = typeof value === 'number' ? value : Number(value); return Number.isFinite(parsed) ? parsed : -1; }
+function normalizedText(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim(); }
 
 function parseJson(text: string) {
   const cleaned = text.replace(/^\uFEFF/, '').replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
@@ -110,25 +111,38 @@ function groundingData(data: JsonRecord) {
 }
 function candidateGroundingSources(candidate: GeminiCandidate, outputText: string, grounding: ReturnType<typeof groundingData>) {
   const lower = outputText.toLowerCase();
-  const urlNeedle = candidate.url.toLowerCase().replace(/\/$/, '');
   const hostNeedle = hostname(candidate.url);
-  const nameNeedle = candidate.name.toLowerCase();
-  const positions = [lower.indexOf(urlNeedle), lower.indexOf(hostNeedle), lower.indexOf(nameNeedle)].filter((position) => position >= 0);
+  const hostRoot = normalizedText(hostNeedle.split('.')[0] ?? '');
+  const nameNeedle = normalizedText(candidate.name);
+  const urlNeedle = candidate.url.toLowerCase().replace(/\/$/, '');
+  const positions = [lower.indexOf(urlNeedle), lower.indexOf(hostNeedle), lower.indexOf(candidate.name.toLowerCase())].filter((position) => position >= 0);
   const indices = new Set<number>();
+
   for (const support of grounding.supports) {
-    const segmentText = support.text.toLowerCase();
-    const textMatch = Boolean(nameNeedle && segmentText.includes(nameNeedle)) || Boolean(hostNeedle && segmentText.includes(hostNeedle));
+    const segmentText = normalizedText(support.text);
+    const textMatch = Boolean(nameNeedle && segmentText.includes(nameNeedle)) || Boolean(hostRoot.length >= 4 && segmentText.includes(hostRoot));
     const rangeMatch = positions.some((position) => support.start >= 0 && support.end >= support.start && position >= support.start - 500 && position <= support.end + 900);
     if (textMatch || rangeMatch) for (const index of support.chunkIndices) indices.add(index);
   }
-  const matched = grounding.sources.filter((source) => indices.has(source.index));
-  return matched.slice(0, 4);
+
+  const supportMatched = grounding.sources.filter((source) => indices.has(source.index));
+  const sourceMatched = grounding.sources.filter((source) => {
+    const title = normalizedText(source.title);
+    const uri = source.uri.toLowerCase();
+    const titleMatch = Boolean(nameNeedle.length >= 3 && title.includes(nameNeedle)) || Boolean(hostRoot.length >= 4 && title.includes(hostRoot));
+    const uriMatch = Boolean(hostNeedle && uri.includes(hostNeedle));
+    return titleMatch || uriMatch;
+  });
+
+  const unique = new Map<string, GroundingSource>();
+  for (const source of [...supportMatched, ...sourceMatched]) unique.set(`${source.uri}|${source.title}`, source);
+  return [...unique.values()].slice(0, 4);
 }
 function discoveryModel() { return process.env['GEMINI_DISCOVERY_MODEL']?.trim() || 'gemini-3.1-flash-lite'; }
 const schema = { type: 'OBJECT', properties: { competitors: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, url: { type: 'STRING' }, reason: { type: 'STRING' }, category: { type: 'STRING' }, commercialEvidence: { type: 'STRING' } }, required: ['name','url','reason','category','commercialEvidence'] } } }, required: ['competitors'] };
-// Google currently documents combined Google Search + structured output on selected Gemini 3 models.
-// Flash-Lite still uses JSON-only prompting here so we do not send an unsupported tool/schema combination.
-function supportsGroundedStructuredOutput(model: string) { return model === 'gemini-3.6-flash' || model === 'gemini-3.1-pro-preview'; }
+// Google documents combined Google Search + structured output on selected Gemini 3 models.
+// Flash-Lite uses JSON-only prompting here so discovery does not rely on an undocumented tool/schema combination.
+function supportsGroundedStructuredOutput(model: string) { return model === 'gemini-3.8-flash' || model === 'gemini-3.1-pro-preview'; }
 function generationConfig(model: string) {
   const base: JsonRecord = { temperature: 0.1, maxOutputTokens: 1800 };
   if (supportsGroundedStructuredOutput(model)) { base['responseMimeType'] = 'application/json'; base['responseSchema'] = schema; }
@@ -173,7 +187,7 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
   const model = discoveryModel();
   const ownHost = hostname(main.url);
   const context = [main.title, main.description, ...main.h1, ...main.h2, main.text.slice(0, 4500)].filter(Boolean).join('\n').slice(0, 6500);
-  const prompt = `Use Google Search to identify up to 6 direct commercial competitors of ${main.url}. Determine the actual business/category from the observed target-site context below. Return only real companies with their canonical official homepage URLs. For every candidate provide: (1) why it directly competes, (2) a concise category, and (3) concrete public commercial evidence that it sells a substantially similar product/service to similar customers. Exclude articles, directories, comparison/review sites, social profiles, marketplaces, investors and data providers. Never invent a company, URL, or commercial fact. If evidence is weak, omit the candidate. Return JSON only, exactly in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\n\nTarget-site context:\n${context}`;
+  const prompt = `Use at most 3 focused Google Search queries to identify up to 6 direct commercial competitors of ${main.url}. Determine the actual business/category from the observed target-site context below. Return only real companies with their canonical official homepage URLs. For every candidate provide: (1) why it directly competes, (2) a concise category, and (3) concrete public commercial evidence that it sells a substantially similar product/service to similar customers. Exclude articles, directories, comparison/review sites, social profiles, marketplaces, investors and data providers. Never invent a company, URL, or commercial fact. If evidence is weak, omit the candidate. Return JSON only, exactly in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\n\nTarget-site context:\n${context}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
