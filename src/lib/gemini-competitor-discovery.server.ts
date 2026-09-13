@@ -7,16 +7,32 @@ function array(value: unknown): unknown[] { return Array.isArray(value) ? value 
 function stringValue(value: unknown): string { return typeof value === 'string' ? value : ''; }
 function parseJson(text: string) { const cleaned=text.replace(/^\uFEFF/,'').replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim(); const start=cleaned.indexOf('{'),end=cleaned.lastIndexOf('}'); if(start<0||end<=start)return {} as JsonRecord; try{return record(JSON.parse(cleaned.slice(start,end+1)));}catch{return {} as JsonRecord;} }
 function candidateUrls(data: JsonRecord, ownHost: string) { const urls:string[]=[]; for(const item of array(data['competitors'])) { const url=stringValue(record(item)['url']).trim(); if(!url)continue; try { const normalized=normalizeUrl(url),host=hostname(normalized); if(!host||host===ownHost||host.endsWith(`.${ownHost}`))continue; if(!urls.some((existing)=>hostname(existing)===host))urls.push(normalized); } catch {} } return urls.slice(0,10); }
-function interactionText(data: JsonRecord) { const direct=stringValue(data['output_text']); if(direct)return direct; const texts:string[]=[]; for(const step of array(data['steps'])) { const s=record(step); if(s['type']!=='model_output')continue; for(const block of array(s['content'])) { const text=stringValue(record(block)['text']); if(text)texts.push(text); } } return texts.join('\n'); }
-function interactionSearchCount(data: JsonRecord) { return array(data['steps']).filter((step)=>record(step)['type']==='google_search_call').length; }
 
-// Discovery intentionally has its own known-good Gemini 3 default. GEMINI_MODEL may be
-// configured for the analysis engine to a legacy/retired model and must not break discovery.
-function discoveryModels() {
-  const configured=process.env['GEMINI_DISCOVERY_MODEL']?.trim();
-  return [...new Set([configured,'gemini-3.8-flash','gemini-3.1-pro-preview'].filter((v):v is string=>Boolean(v)))];
+// Interactions API has used both `outputs` and `steps` shapes during its evolution.
+// Parse the documented current output_text first, then both collection shapes so a
+// successful grounded interaction cannot be mistaken for an empty result.
+function interactionText(data: JsonRecord) {
+  const direct=stringValue(data['output_text']); if(direct)return direct;
+  const texts:string[]=[];
+  const collect=(item:unknown)=>{
+    const obj=record(item);
+    const ownText=stringValue(obj['text']); if(ownText)texts.push(ownText);
+    for(const block of array(obj['content'])) { const b=record(block); const text=stringValue(b['text']); if(text)texts.push(text); }
+  };
+  for(const output of array(data['outputs'])) collect(output);
+  for(const step of array(data['steps'])) collect(step);
+  return texts.join('\n');
+}
+function interactionSearchCount(data: JsonRecord) {
+  return [...array(data['outputs']),...array(data['steps'])].filter((item)=>{
+    const type=stringValue(record(item)['type']); return type==='google_search_call'||type==='google_search';
+  }).length;
 }
 
+function discoveryModels() {
+  const configured=process.env['GEMINI_DISCOVERY_MODEL']?.trim();
+  return [...new Set([configured,'gemini-3.8-flash','gemini-3.7-flash','gemini-3.1-pro-preview'].filter((v):v is string=>Boolean(v)))];
+}
 async function callGemini(apiKey:string,model:string,prompt:string,signal:AbortSignal) {
   return fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',signal,headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},body:JSON.stringify({
     model,input:prompt,tools:[{type:'google_search'}],store:false,
@@ -42,7 +58,7 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
     const text=interactionText(raw); const urls=candidateUrls(parseJson(text),ownHost); const snapshots:SiteSnapshot[]=[];
     for(const url of urls){try{snapshots.push(await fetchSite(url));}catch{try{const indexed=await searchEvidenceForUrl(url);if(indexed)snapshots.push(indexed);}catch{}}}
     const result:GeminiDiscoveryResult={snapshots,candidateCount:urls.length,searchQueries:interactionSearchCount(raw),status:urls.length?'ok':'empty'};
-    console.info('Gemini competitor discovery',{model:usedModel,status:result.status,candidates:result.candidateCount,verifiedSnapshots:snapshots.length,searchQueries:result.searchQueries,outputChars:text.length});
+    console.info('Gemini competitor discovery',{model:usedModel,interactionStatus:stringValue(raw['status']),status:result.status,candidates:result.candidateCount,verifiedSnapshots:snapshots.length,searchQueries:result.searchQueries,outputChars:text.length,outputs:array(raw['outputs']).length,steps:array(raw['steps']).length});
     return result;
   } catch(error){console.error('Gemini competitor discovery unavailable',{error});return {snapshots:[],candidateCount:0,searchQueries:0,status:'provider-error'};} finally{clearTimeout(timer);}
 }
