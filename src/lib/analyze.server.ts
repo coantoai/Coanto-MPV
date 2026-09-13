@@ -61,8 +61,27 @@ export function buildPrompt(main:SiteSnapshot,competitors:SiteSnapshot[]){return
   'Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.',
   'Each competitor must include name, url, why, evidence, sourceUrls, relevance (0-100), impact (0-100), and threat (low/medium/high/critical).',
   'Each signal should include title, description/detail, the related competitor, impact, confidence, and sourceUrls when available.',
-  'priority_matrix items must use zone: do-now, test, monitor, or ignore. action_plan items should use timing: today, week, or month.',
+  'priority_matrix items must use zone: do-now, test, monitor, or ignore. action_plan items should use timing: today, week, or later.',
   'Give concrete decisions and next steps, not generic advice. Keep user-facing language in simple clear Arabic and explain unavoidable technical terms.',
   'Never invent prices, revenue, market share, percentages, dates, or financial impact. Clearly distinguish facts, inference, recommendation, and unknown.',
 ].join('\n');}
-export function parseJsonBlock(text:string){const start=text.indexOf('{'),end=text.lastIndexOf('}');if(start<0||end<=start)throw new Error('AI returned no JSON object.');return JSON.parse(text.slice(start,end+1)) as Record<string,unknown>;}
+
+export function parseJsonBlock(text:string){
+  const cleaned=text.replace(/^\uFEFF/,'').replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();
+  for(let start=cleaned.indexOf('{');start>=0;start=cleaned.indexOf('{',start+1)){
+    let depth=0,quoted=false,escaped=false;
+    for(let index=start;index<cleaned.length;index+=1){
+      const char=cleaned[index];
+      if(quoted){if(escaped)escaped=false;else if(char==='\\')escaped=true;else if(char==='"')quoted=false;continue;}
+      if(char==='"'){quoted=true;continue;}
+      if(char==='{')depth+=1;
+      else if(char==='}'){
+        depth-=1;
+        if(depth===0){
+          try{const value=JSON.parse(cleaned.slice(start,index+1));if(value&&typeof value==='object'&&!Array.isArray(value))return value as Record<string,unknown>;}catch{break;}
+        }
+      }
+    }
+  }
+  throw new Error('AI returned no valid JSON object.');
+}
