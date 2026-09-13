@@ -5,9 +5,17 @@ function decodeHtml(h: string) {
 }
 
 async function fetchText(url: string) {
-  const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0)' } });
-  if (!response.ok) return '';
-  return decodeHtml(await response.text());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; COANTO/1.0)' } });
+    if (!response.ok) return '';
+    return decodeHtml(await response.text());
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function namesFromDirectory(text: string, ownBrand: string) {
@@ -31,16 +39,12 @@ export async function discoverDirectoryNames(brand: string) {
     { url: `https://craft.co/${slug}/competitors`, source: 'craft' },
     { url: `https://www.owler.com/company/${slug}/competitors`, source: 'owler' },
   ];
+  const pages = await Promise.all(sources.map(async (source) => ({ ...source, text: await fetchText(source.url) })));
   const out: DirectoryCompetitor[] = [];
-  for (const source of sources) {
-    try {
-      const text = await fetchText(source.url);
-      for (const name of namesFromDirectory(text, brand)) {
-        if (!out.some((item) => item.name.toLowerCase() === name.toLowerCase())) out.push({ name, url: source.url, source: source.source });
-      }
-    } catch {
-      // supplementary evidence only
+  for (const page of pages) {
+    for (const name of namesFromDirectory(page.text, brand)) {
+      if (!out.some((item) => item.name.toLowerCase() === name.toLowerCase())) out.push({ name, url: page.url, source: page.source });
     }
   }
-  return out;
+  return out.slice(0, 8);
 }
