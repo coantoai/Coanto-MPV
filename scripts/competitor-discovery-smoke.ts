@@ -23,10 +23,37 @@ const grounded=site(
     'Gemini Google Search grounded competitor candidate: Grounded Runner — sells similar footwear to similar customers',
     'Grounded category: footwear and running shoes',
     'Grounded commercial evidence: sells running shoes and sneakers through its official website',
-    'Google Search grounding source: https://search-source.example/evidence',
+    'Google Search grounding source: public source — https://search-source.example/evidence',
   ],
 );
 const groundedAccepted=filterCommercialCompetitors(main,[grounded]);
 if(groundedAccepted.length!==1||groundedAccepted[0]?.url!==grounded.url)throw new Error('Google-grounded commercial competitor fallback was rejected.');
+
+const serviceMain=site('https://northstar-advisory.example','Northstar Advisory','advisory consulting for small businesses');
+const groundedService=site(
+  'https://rival-advisory.example',
+  'Rival Advisory',
+  'Business advisory consultancy serving small and medium businesses.',
+  'search-index',
+  [
+    'Gemini Google Search grounded competitor candidate: Rival Advisory — provides the same business advisory service to SMEs',
+    'Grounded category: business advisory consulting',
+    'Grounded commercial evidence: offers paid advisory engagements to small and medium businesses',
+    'Google Search grounding source: rival-advisory.example — https://search-source.example/rival',
+  ],
+);
+if(filterCommercialCompetitors(serviceMain,[groundedService]).length!==1)throw new Error('Candidate-specific grounding should support businesses outside the lexical category taxonomy.');
+
+const ungroundedService=site(
+  'https://unverified-advisory.example',
+  'Unverified Advisory',
+  'Business advisory consultancy serving small and medium businesses.',
+  'search-index',
+  [
+    'Gemini Google Search grounded competitor candidate: Unverified Advisory — alleged competitor',
+    'Grounded commercial evidence: alleged similar service',
+  ],
+);
+if(filterCommercialCompetitors(serviceMain,[ungroundedService]).length!==0)throw new Error('Grounded fallback without a candidate-specific Google source must not bypass verification.');
 
 console.log('COMPETITOR_DISCOVERY_SMOKE_OK');
