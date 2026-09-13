@@ -159,8 +159,11 @@ function groundedEvidence(candidate: GeminiCandidate, sources: GroundingSource[]
   ];
 }
 function augmentSnapshot(site: SiteSnapshot, candidate: GeminiCandidate, sources: GroundingSource[]): SiteSnapshot {
+  // Never let ungrounded model prose influence verification scores. If Google Search
+  // did not link evidence to this exact candidate, verification uses only the site/index snapshot.
+  if (!sources.length) return site;
   const grounded = groundedEvidence(candidate, sources);
-  const candidateContext = `Discovery candidate: ${candidate.name}. Category: ${candidate.category}. Commercial evidence: ${candidate.commercialEvidence}. ${candidate.reason}`;
+  const candidateContext = `Grounded discovery candidate: ${candidate.name}. Category: ${candidate.category}. Commercial evidence: ${candidate.commercialEvidence}. ${candidate.reason}`;
   return {
     ...site,
     description: [site.description, candidate.reason].filter(Boolean).join(' '),
