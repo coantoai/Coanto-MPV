@@ -32,14 +32,13 @@ function AuthPage() {
       }
       if (mode === 'reset') {
         await clientAuth.resetPassword(email, otp, password);
-        setMode('signin'); setOtp(''); setPassword('');
-        setError('تم تغيير كلمة المرور. يمكنك تسجيل الدخول الآن.'); return;
+        setMode('signin'); setOtp('');
+        setError('تم تغيير كلمة المرور. سجّل الدخول الآن ليعرض Google حفظ كلمة المرور الجديدة.'); return;
       }
       if (mode === 'signup') {
         const result = await clientAuth.signUp(email, password, `${window.location.origin}/auth`);
         if (!result.session) {
-          // InsForge sends the verification code as part of sign-up; show the code field immediately.
-          setMode('verify'); setPassword(''); setOtp('');
+          setMode('verify'); setOtp('');
           setError('أرسلنا رمز التحقق إلى بريدك. أدخله هنا لتكمل.'); return;
         }
       } else { await clientAuth.signIn(email, password); }
@@ -55,12 +54,12 @@ function AuthPage() {
 
   return (
     <div dir="rtl" className="grid min-h-screen place-items-center bg-[#060910] p-4 text-white">
-      <form onSubmit={submit} className="w-full max-w-md space-y-3 rounded-3xl border border-[#223148] bg-[#0d141f] p-6">
+      <form onSubmit={submit} autoComplete="on" className="w-full max-w-md space-y-3 rounded-3xl border border-[#223148] bg-[#0d141f] p-6">
         <div className="text-xl font-black tracking-[3px] text-[#29d3bd]">COANTO</div>
         <h1 className="text-2xl font-black">{title}</h1>
-        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" readOnly={mode === 'verify' || mode === 'reset'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
-        {showCode && <input type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="الرمز — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />}
-        {showPassword && <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'reset' ? 'كلمة المرور الجديدة' : 'كلمة المرور'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />}
+        <input name="username" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="البريد الإلكتروني" readOnly={mode === 'verify' || mode === 'reset'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />
+        {showCode && <input name="one-time-code" type="text" required inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="الرمز — 6 أرقام" className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3 text-center text-xl tracking-[0.35em]" />}
+        {showPassword && <input name="password" type="password" required minLength={6} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'reset' ? 'كلمة المرور الجديدة' : 'كلمة المرور'} className="w-full rounded-xl border border-white/10 bg-[#090e16] px-4 py-3" />}
         <button disabled={busy} className="w-full rounded-xl bg-[#29d3bd] py-3 font-black text-[#06100e]">{busy ? "جارٍ..." : button}</button>
         {error && <div className="rounded-xl border border-amber-300/30 p-3 text-xs text-amber-200">{error}</div>}
 
