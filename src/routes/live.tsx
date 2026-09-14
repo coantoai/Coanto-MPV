@@ -1,10 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { MouseEvent } from "react";
 import { LiveWorkspace } from "@/components/decision-experience/LiveWorkspace";
 import experienceCss from "@/components/decision-experience/experience.css?url";
 
 function CoantoLiveE2E() {
+  function preserveLiveReturn(event: MouseEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+    const anchor = target?.closest('a[href="/auth"]') as HTMLAnchorElement | null;
+    if (!anchor) return;
+    anchor.href = "/auth?next=/live";
+  }
+
   return (
-    <main className="nx-shell" dir="rtl">
+    <main className="nx-shell" dir="rtl" onClickCapture={preserveLiveReturn}>
       <header className="nx-topbar">
         <a className="nx-brand" href="/live" aria-label="COANTO Live">
           COANTO
