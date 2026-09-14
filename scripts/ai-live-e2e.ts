@@ -10,6 +10,8 @@ const providers: AiProvider[] = ['gemini', 'openai', 'anthropic', 'openrouter'];
 const keys: Record<AiProvider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 const target = process.env.COANTO_E2E_URL?.trim() || 'https://www.allbirds.com/';
 function parseJsonObject(text:string):unknown{const cleaned=text.replace(/^\s*```(?:json)?\s*/i,'').replace(/\s*```\s*$/i,'').trim();for(let start=cleaned.indexOf('{');start>=0;start=cleaned.indexOf('{',start+1)){let depth=0,quoted=false,escaped=false;for(let i=start;i<cleaned.length;i+=1){const char=cleaned[i];if(quoted){if(escaped)escaped=false;else if(char==='\\')escaped=true;else if(char==='"')quoted=false;continue;}if(char==='"'){quoted=true;continue;}if(char==='{')depth+=1;else if(char==='}'){depth-=1;if(depth===0){const candidate=cleaned.slice(start,i+1);try{return JSON.parse(candidate);}catch{break;}}}}}throw new Error('provider returned no valid JSON object');}
+function canonical(value:string){try{return new URL(value).toString();}catch{return'';}}
+function decisionDiagnostics(value:Record<string,unknown>){const rows=Array.isArray(value['priorityMatrix'])?value['priorityMatrix']:[];return rows.slice(0,5).map((item)=>{const row=item&&typeof item==='object'?item as Record<string,unknown>:{};const urls=Array.isArray(row['sourceUrls'])?row['sourceUrls']:[];return{title:String(row['title']??'').slice(0,120),zone:String(row['zone']??'').slice(0,40),linkage:String(row['decisionEvidenceStatus']??'unknown'),sources:urls.length,hasWhy:Boolean(String(row['why']??row['reason']??row['rationale']??'').trim()),hasCounter:Array.isArray(row['counterEvidence'])&&row['counterEvidence'].length>0,hasTrigger:Boolean(String(row['trigger']??'').trim())};});}
 
 async function main(){
   const main=await fetchSite(target);
@@ -38,15 +40,17 @@ async function main(){
       if(metadata?.['claimLinkageChecked']!==true)throw new Error('claim linkage check did not run');
       if(metadata?.['decisionSourceLinkageChecked']!==true)throw new Error('decision source linkage check did not run');
 
+      const diagnostics=decisionDiagnostics(trusted);
+      console.log(`DECISION ROW DIAGNOSTICS ${provider}: ${JSON.stringify(diagnostics)}`);
       const decision=deriveLiveDecision(trusted);
-      if(!decision.candidatePosture)throw new Error('provider returned no recognizable Decision Event posture');
-      if(decision.posture==='INSUFFICIENT')throw new Error(`Decision Event remained insufficient after evidence gate: ${decision.promotionBlockedBy.join(', ') || 'unknown reason'}`);
+      if(!decision.candidatePosture)throw new Error(`provider returned no recognizable Decision Event posture; rows=${JSON.stringify(diagnostics)}`);
+      if(decision.posture==='INSUFFICIENT')throw new Error(`Decision Event remained insufficient after evidence gate: ${decision.promotionBlockedBy.join(', ') || 'unknown reason'}; rows=${JSON.stringify(diagnostics)}`);
       if(!decision.sourceUrls.length)throw new Error('Decision Event promoted without gated source URLs');
+      const observedSources=new Set([main,...discovered].map((site)=>canonical(site.url)).filter(Boolean));
+      const providerSources=new Set(run.sources.map(canonical).filter(Boolean));
       for(const source of decision.sourceUrls){
-        const host=new URL(source).hostname.replace(/^www\./,'').toLowerCase();
-        const allowedHosts=new Set([main,...discovered].map((site)=>new URL(site.url).hostname.replace(/^www\./,'').toLowerCase()));
-        const providerSources=new Set(run.sources.map((url)=>{try{return new URL(url).toString();}catch{return'';}}));
-        if(!allowedHosts.has(host)&&!providerSources.has(new URL(source).toString()))throw new Error(`Decision Event retained an unverified source: ${source}`);
+        const normalized=canonical(source);
+        if(!observedSources.has(normalized)&&!providerSources.has(normalized))throw new Error(`Decision Event retained an unverified source: ${source}`);
       }
 
       successful+=1;
