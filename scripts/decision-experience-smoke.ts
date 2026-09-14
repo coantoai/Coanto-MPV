@@ -78,6 +78,7 @@ assert.equal(
   liveProjection({ metadata: { evidenceLedgerPersisted: "true" } }).saved,
   false,
 );
+
 // Regression boundary: new evidence reads must scope ownership BEFORE reading shared records.
 const reader = readFileSync(
   "src/lib/decision-experience/live.functions.ts",
@@ -90,6 +91,32 @@ assert.ok(
 assert.ok(reader.match(/\.eq\("user_id", context\.userId\)/g)!.length === 2);
 assert.ok(reader.includes("if (owned.error || !owned.data)"));
 assert.ok(reader.includes('.in("id", ids)'));
+
+// Live E2E must remain an isolated route and must not replace the preserved R1–R60 preview.
+const liveRoute = readFileSync("src/routes/live.tsx", "utf8");
+const nextRoute = readFileSync("src/routes/next.tsx", "utf8");
+assert.ok(liveRoute.includes('createFileRoute("/live")'));
+assert.ok(liveRoute.includes("<LiveWorkspace lang=\"ar\" />"));
+assert.ok(liveRoute.includes('anchor.href = "/auth?next=/live"'));
+assert.ok(nextRoute.includes('createFileRoute("/next")'));
+assert.ok(nextRoute.includes("DecisionExperience"));
+assert.ok(!nextRoute.includes("LiveWorkspace"));
+
+// Auth and onboarding must preserve the requested live destination without accepting external redirects.
+const authRoute = readFileSync("src/routes/auth.tsx", "utf8");
+const onboardingRoute = readFileSync("src/routes/onboarding.tsx", "utf8");
+assert.ok(authRoute.includes("const RETURN_TO_KEY = 'coanto:return-to'"));
+assert.ok(authRoute.includes("candidate.startsWith('/')"));
+assert.ok(authRoute.includes("!candidate.startsWith('//')"));
+assert.ok(authRoute.includes("new URLSearchParams(window.location.search).get('next')"));
+assert.ok(authRoute.includes("authCallbackUrl()"));
+assert.ok(onboardingRoute.includes("consumeReturnTo()"));
+assert.ok(onboardingRoute.includes("window.location.assign(destination)"));
+
+// Type validation must generate the file-route tree first so newly added file routes are typed.
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
+assert.equal(pkg.scripts?.typecheck, "vite build --mode development && tsc --noEmit");
+
 console.log(
-  "PASS: decision revisions, counter-evidence, abstention, price constraints, safe links, fixture provenance, live projection and tenant-read boundary.",
+  "PASS: decision revisions, counter-evidence, abstention, price constraints, safe links, fixture provenance, live projection, tenant-read boundary, isolated live route and auth-return contract.",
 );
