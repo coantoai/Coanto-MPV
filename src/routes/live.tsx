@@ -3,16 +3,15 @@ import { LiveProductExperience } from "@/components/decision-experience/LiveProd
 import experienceCss from "@/components/decision-experience/experience.css?url";
 import liveProductCss from "@/components/decision-experience/live-product.css?url";
 
-function CoantoLiveE2E() {
+function CoantoLive() {
   return (
     <main className="nx-shell" dir="rtl">
       <header className="nx-topbar">
-        <a className="nx-brand" href="/live" aria-label="COANTO Live">
+        <a className="nx-brand" href="/live" aria-label="COANTO">
           COANTO
         </a>
-        <div className="nx-mode-switch" aria-label="Live environment">
-          <span className="nx-chip nx-chip-active">LIVE E2E</span>
-          <a className="nx-chip" href="/next">R1–R60 Preview</a>
+        <div className="nx-mode-switch" aria-label="COANTO product area">
+          <span className="nx-chip nx-chip-active">تحليل المنافسة والقرار</span>
         </div>
       </header>
       <section className="nx-stage">
@@ -25,10 +24,10 @@ function CoantoLiveE2E() {
 export const Route = createFileRoute("/live")({
   head: () => ({
     meta: [
-      { title: "COANTO — Live Decision Intelligence" },
+      { title: "COANTO — Competitive Decision Intelligence" },
       {
         name: "description",
-        content: "COANTO live E2E: company, competitors, signals, evidence and a bounded decision in one visual flow.",
+        content: "COANTO turns company and competitor evidence into a clear, reviewable business decision.",
       },
       { name: "robots", content: "noindex, nofollow" },
     ],
@@ -37,5 +36,5 @@ export const Route = createFileRoute("/live")({
       { rel: "stylesheet", href: liveProductCss },
     ],
   }),
-  component: CoantoLiveE2E,
+  component: CoantoLive,
 });
