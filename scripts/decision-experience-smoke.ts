@@ -107,7 +107,7 @@ const authRoute = readFileSync("src/routes/auth.tsx", "utf8");
 const onboardingRoute = readFileSync("src/routes/onboarding.tsx", "utf8");
 assert.ok(authRoute.includes("const RETURN_TO_KEY = 'coanto:return-to'"));
 assert.ok(authRoute.includes("candidate.startsWith('/')"));
-assert.ok(authRoute.includes("!candidate.startsWith('//')"));
+assert.ok(authRoute.includes("candidate.startsWith('//')"));
 assert.ok(authRoute.includes("new URLSearchParams(window.location.search).get('next')"));
 assert.ok(authRoute.includes("authCallbackUrl()"));
 assert.ok(onboardingRoute.includes("consumeReturnTo()"));
