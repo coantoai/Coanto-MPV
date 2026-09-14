@@ -10,6 +10,7 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()) : [];
 }
 function text(value: unknown) { return typeof value === 'string' ? value.trim() : ''; }
+function canonicalUrl(value: string) { try { const parsed = new URL(value); return ['http:','https:'].includes(parsed.protocol) ? parsed.toString() : ''; } catch { return ''; } }
 function normalizeLabel(value: string) { return value.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').replace(/\s+/g, ' ').trim(); }
 function siteAliases(host: string, site: SiteSnapshot) {
   const root = host.split('.')[0]?.replace(/[-_]+/g, ' ') ?? '';
@@ -24,6 +25,9 @@ function safeSourceUrls(value: unknown, allowedHosts: Set<string>, aiSources: Se
       return ['http:', 'https:'].includes(parsed.protocol) && (allowedHosts.has(host) || aiSources.has(parsed.toString()));
     } catch { return false; }
   });
+}
+function safeDecisionSourceUrls(value: unknown, observedUrls: Set<string>, aiSources: Set<string>) {
+  return [...new Set(stringList(value).map(canonicalUrl).filter((url): url is string => Boolean(url) && (observedUrls.has(url) || aiSources.has(url))))];
 }
 function firstObject(value: unknown) { return objectList(value)[0] ?? {}; }
 function cardFrom(row: Record<string, unknown>, fallbackTitle: string, fallbackDescription: string, fallbackLevel: string) {
@@ -45,7 +49,9 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   const evidenceByHost = new Map(competitors.map((site) => [hostname(site.url), site]));
   const allowed = new Set(evidenceByHost.keys());
   allowed.add(mainHost);
-  const aiSources = new Set(aiSourceUrls.filter((url) => /^https?:\/\//i.test(url)).map((url) => { try { return new URL(url).toString(); } catch { return ''; } }).filter((url): url is string => Boolean(url)));
+  const aiSources = new Set(aiSourceUrls.map(canonicalUrl).filter((url): url is string => Boolean(url)));
+  const allObservedSources = [main, ...competitors];
+  const observedUrls = new Set(allObservedSources.map((site) => canonicalUrl(site.url)).filter((url): url is string => Boolean(url)));
 
   const rows = Array.isArray(result['competitors']) ? result['competitors'] : [];
   result['competitors'] = rows.flatMap((row) => {
@@ -71,7 +77,6 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     }];
   });
 
-  const allObservedSources = [main, ...competitors];
   const directSourceCount = allObservedSources.filter((site) => site.sourceType === 'direct-site').length;
   const indexedSourceCount = allObservedSources.filter((site) => site.sourceType === 'search-index').length;
   const groundedCompetitorCount = competitors.filter(groundedSite).length;
@@ -101,7 +106,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
 
   const priorityRows = objectList(result['priorityMatrix'] ?? result['priority_matrix']);
   const checkedPriorityRows = priorityRows.map((row) => {
-    const sourceUrls = safeSourceUrls(row['sourceUrls'] ?? row['source_urls'] ?? row['evidenceUrls'] ?? row['evidence_urls'], allowed, aiSources);
+    const sourceUrls = safeDecisionSourceUrls(row['sourceUrls'] ?? row['source_urls'] ?? row['evidenceUrls'] ?? row['evidence_urls'], observedUrls, aiSources);
     return {
       ...row,
       sourceUrls,
@@ -127,7 +132,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     { type: 'evidence-gate', status: 'passed', detail: 'تم حذف أي منافس لا يمكن ربطه بمجموعة الأدلة المكتشفة.' },
     { type: 'source-transparency', status: 'passed', detail: 'تم تنظيف روابط المصادر وربطها بالمصادر المسموح بها.' },
     { type: 'claim-linkage', status: rejectedSignals.length ? 'caution' : 'passed', detail: rejectedSignals.length ? `تم حجب ${rejectedSignals.length} إشارة غير مدعومة.` : 'كل الإشارات المعروضة مرتبطة بمصدر أو منافس ذي دليل.' },
-    { type: 'decision-source-linkage', status: unlinkedDecisionRows.length ? 'caution' : 'passed', detail: unlinkedDecisionRows.length ? `${unlinkedDecisionRows.length} صف قرار بقي بلا مصدر موثّق مباشر ولن يُرقّى تلقائيًا.` : 'كل صفوف القرار الحالية تحمل مصدرًا موثّقًا مباشرًا.' },
+    { type: 'decision-source-linkage', status: unlinkedDecisionRows.length ? 'caution' : 'passed', detail: unlinkedDecisionRows.length ? `${unlinkedDecisionRows.length} صف قرار بقي بلا مصدر موثّق مباشر ولن يُرقّى تلقائيًا.` : 'كل صفوف القرار الحالية تحمل رابطًا مطابقًا لمصدر مرصود أو مصدر grounding من مزود AI.' },
     { type: 'confidence-calibration', status: evidenceStrength === 'low' ? 'caution' : 'passed', detail: `قوة الثقة مشتقة من عدد المصادر المستقلة ونوع الوصول إليها: ${evidenceStrength}.` },
   ];
 
@@ -139,6 +144,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     decisionRowsChecked: checkedPriorityRows.length,
     unlinkedDecisionRows: unlinkedDecisionRows.length,
     decisionSourceLinkageChecked: true,
+    decisionSourcePolicy: 'exact-observed-url-or-provider-grounded-source',
     confidenceBasis: 'independent-source-coverage-and-directness', provenanceAttached: true, claimLinkageChecked: true, aiTextAcceptedAsEvidence: false,
   };
 
