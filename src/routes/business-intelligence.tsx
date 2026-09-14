@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { BarChart3, Brain, RefreshCw, ShieldCheck } from 'lucide-react';
 import { listBusinessInsights, listBusinessMetrics, refreshBusinessIntelligence, type BusinessInsight, type BusinessMetric } from '@/lib/business-intelligence.functions';
-// @ts-expect-error TanStack route types are generated separately.
 export const Route=createFileRoute('/business-intelligence')({component:BusinessIntelligencePage});
 
 const metricLabels:Record<string,string>={

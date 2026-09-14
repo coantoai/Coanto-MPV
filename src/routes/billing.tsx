@@ -5,7 +5,6 @@ import { getBillingOverview } from '@/lib/billing.functions';
 import { clientAuth } from '@/lib/auth-client';
 import type { BillingPlan, BillingPlanKey, BillingStatus } from '@/lib/billing-policy.server';
 
-// @ts-expect-error TanStack route types are generated separately.
 export const Route=createFileRoute('/billing')({component:BillingPage});
 
 type BillingView={

@@ -74,5 +74,4 @@ function AuthPage() {
   );
 }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute("/auth")({ component: AuthPage });

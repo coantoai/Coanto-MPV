@@ -31,5 +31,4 @@ function OnboardingPage(){
 }
 const inputClass='w-full rounded-xl border border-white/10 bg-[#080d15] px-4 py-3 text-sm outline-none transition focus:border-[#29d3bd]/50 placeholder:text-slate-700';
 function Field({label,children}:{label:string;children:React.ReactNode}){return <label className="block"><span className="mb-2 block text-xs font-bold text-slate-400">{label}</span>{children}</label>}
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route=createFileRoute('/onboarding')({head:()=>({meta:[{title:'إعداد النشاط — COANTO'}]}),component:OnboardingPage});
