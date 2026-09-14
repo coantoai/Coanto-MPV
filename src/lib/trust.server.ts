@@ -99,12 +99,26 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
   const rejectedSignals = checkedSignals.filter((row) => row.evidenceStatus === 'unlinked');
   result['signals'] = checkedSignals.filter((row) => row.evidenceStatus === 'linked');
 
+  const priorityRows = objectList(result['priorityMatrix'] ?? result['priority_matrix']);
+  const checkedPriorityRows = priorityRows.map((row) => {
+    const sourceUrls = safeSourceUrls(row['sourceUrls'] ?? row['source_urls'] ?? row['evidenceUrls'] ?? row['evidence_urls'], allowed, aiSources);
+    return {
+      ...row,
+      sourceUrls,
+      decisionEvidenceStatus: sourceUrls.length ? 'linked' : 'unlinked',
+    };
+  });
+  const unlinkedDecisionRows = checkedPriorityRows.filter((row) => row.decisionEvidenceStatus === 'unlinked');
+  result['priority_matrix'] = checkedPriorityRows;
+  result['priorityMatrix'] = checkedPriorityRows;
+
   const unknowns = Array.isArray(result['unknowns']) ? result['unknowns'].filter((value): value is string => typeof value === 'string') : [];
   result['unknowns'] = [...new Set([
     ...unknowns,
     ...(competitors.some((site) => site.sourceType === 'search-index') ? ['بعض المنافسين مبنيون على أدلة عامة من البحث لأن الوصول المباشر غير متاح.'] : []),
     ...(sourceCount < 2 ? ['قوة الدليل محدودة؛ يجب عدم تحويل هذه النتيجة إلى حقيقة مؤكدة.'] : []),
     ...(rejectedSignals.length ? [`تم حجب ${rejectedSignals.length} إشارة لم تحمل رابط مصدر صالحًا أو ارتباطًا واضحًا بمنافس ذي أدلة.`] : []),
+    ...(unlinkedDecisionRows.length ? [`${unlinkedDecisionRows.length} صف قرار لا يحمل مصدرًا موثّقًا مرتبطًا به مباشرة؛ يجب إبقاؤه Insufficient Evidence وعدم ترقيته تلقائيًا.`] : []),
   ])];
 
   const trust = Array.isArray(result['trust']) ? result['trust'] : [];
@@ -113,6 +127,7 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     { type: 'evidence-gate', status: 'passed', detail: 'تم حذف أي منافس لا يمكن ربطه بمجموعة الأدلة المكتشفة.' },
     { type: 'source-transparency', status: 'passed', detail: 'تم تنظيف روابط المصادر وربطها بالمصادر المسموح بها.' },
     { type: 'claim-linkage', status: rejectedSignals.length ? 'caution' : 'passed', detail: rejectedSignals.length ? `تم حجب ${rejectedSignals.length} إشارة غير مدعومة.` : 'كل الإشارات المعروضة مرتبطة بمصدر أو منافس ذي دليل.' },
+    { type: 'decision-source-linkage', status: unlinkedDecisionRows.length ? 'caution' : 'passed', detail: unlinkedDecisionRows.length ? `${unlinkedDecisionRows.length} صف قرار بقي بلا مصدر موثّق مباشر ولن يُرقّى تلقائيًا.` : 'كل صفوف القرار الحالية تحمل مصدرًا موثّقًا مباشرًا.' },
     { type: 'confidence-calibration', status: evidenceStrength === 'low' ? 'caution' : 'passed', detail: `قوة الثقة مشتقة من عدد المصادر المستقلة ونوع الوصول إليها: ${evidenceStrength}.` },
   ];
 
@@ -121,6 +136,9 @@ export function enforceEvidence(analysis: unknown, main: SiteSnapshot, competito
     evidenceGate: 'passed', evidenceCount, directEvidenceCount, indexedEvidenceCount, evidenceStrength,
     sourceCount, directSourceCount, indexedSourceCount, groundedCompetitorCount,
     rejectedUnsupportedSignals: rejectedSignals.length,
+    decisionRowsChecked: checkedPriorityRows.length,
+    unlinkedDecisionRows: unlinkedDecisionRows.length,
+    decisionSourceLinkageChecked: true,
     confidenceBasis: 'independent-source-coverage-and-directness', provenanceAttached: true, claimLinkageChecked: true, aiTextAcceptedAsEvidence: false,
   };
 
