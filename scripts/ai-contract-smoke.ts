@@ -49,7 +49,7 @@ const verifiedCompetitor: SiteSnapshot = {
 };
 
 const decisionPrompt = buildPrompt(baseline, [verifiedCompetitor]);
-for (const required of ['sourceUrls', 'evidenceFor', 'counterEvidence', 'trigger', 'nextAction', 'Insufficient Evidence']) {
+for (const required of ['sourceUrls', 'evidenceFor', 'counterEvidence', 'trigger', 'nextAction', 'insufficient evidence']) {
   if (!decisionPrompt.includes(required)) throw new Error(`Decision prompt missing ${required}.`);
 }
 if (!decisionPrompt.includes('Do not attach unrelated URLs')) throw new Error('Decision prompt does not prohibit decorative source linkage.');
