@@ -9,7 +9,12 @@ import {
   revisedEvent,
   safeSourceUrl,
 } from "../src/lib/decision-experience/model";
-import { liveProjection } from "../src/lib/decision-experience/live-model";
+import {
+  answerLiveDecisionQuestion,
+  deriveLiveDecision,
+  liveProjection,
+} from "../src/lib/decision-experience/live-model";
+
 const event = events.find((e) => e.id === "price-window")!;
 const empty = { floor: null, stock: "unknown" as const };
 assert.equal(effectivePosture(event, false), "WATCH");
@@ -79,6 +84,44 @@ assert.equal(
   false,
 );
 
+// A live Decision Event is promoted only from a recognized matrix zone with a rationale and direct source URLs.
+const promoted = deriveLiveDecision({
+  priorityMatrix: [
+    {
+      zone: "do-now",
+      title: "Protect the current offer",
+      reason: "A verified competitor changed the offer while your public position stayed unchanged.",
+      sourceUrls: ["https://example.com/offer"],
+      evidenceFor: ["Offer changed on the cited public page."],
+      counterEvidence: ["Duration of the change is not yet known."],
+      trigger: "Recheck when the competitor offer expires or your inventory constraint changes.",
+      nextAction: "Review the offer before changing price.",
+    },
+  ],
+  unknowns: ["Competitor inventory is unknown."],
+});
+assert.equal(promoted.posture, "ACT");
+assert.equal(promoted.candidatePosture, "ACT");
+assert.equal(promoted.complete, true);
+assert.deepEqual(promoted.sourceUrls, ["https://example.com/offer"]);
+assert.ok(answerLiveDecisionQuestion(promoted, "ليش؟").includes("verified competitor"));
+assert.ok(answerLiveDecisionQuestion(promoted, "شو ضد القرار؟").includes("Duration"));
+assert.ok(answerLiveDecisionQuestion(promoted, "سؤال غير موجود").includes("لن أملأ الفراغ"));
+
+const blocked = deriveLiveDecision({
+  priority_matrix: [
+    {
+      zone: "test",
+      title: "Try a reversible response",
+      rationale: "The model sees a potentially material change.",
+      sourceUrls: ["javascript:alert(1)"],
+    },
+  ],
+});
+assert.equal(blocked.posture, "INSUFFICIENT");
+assert.equal(blocked.candidatePosture, "TEST");
+assert.ok(blocked.promotionBlockedBy.includes("decision-linked source URLs"));
+
 // Regression boundary: new evidence reads must scope ownership BEFORE reading shared records.
 const reader = readFileSync(
   "src/lib/decision-experience/live.functions.ts",
@@ -92,15 +135,23 @@ assert.ok(reader.match(/\.eq\("user_id", context\.userId\)/g)!.length === 2);
 assert.ok(reader.includes("if (owned.error || !owned.data)"));
 assert.ok(reader.includes('.in("id", ids)'));
 
-// Live E2E must remain an isolated route and must not replace the preserved R1–R60 preview.
+// Live E2E must remain isolated and must not replace the preserved R1–R60 preview.
 const liveRoute = readFileSync("src/routes/live.tsx", "utf8");
 const nextRoute = readFileSync("src/routes/next.tsx", "utf8");
+const liveWorkspace = readFileSync(
+  "src/components/decision-experience/LiveWorkspace.tsx",
+  "utf8",
+);
 assert.ok(liveRoute.includes('createFileRoute("/live")'));
 assert.ok(liveRoute.includes("<LiveWorkspace lang=\"ar\" />"));
 assert.ok(liveRoute.includes('anchor.href = "/auth?next=/live"'));
 assert.ok(nextRoute.includes('createFileRoute("/next")'));
 assert.ok(nextRoute.includes("DecisionExperience"));
 assert.ok(!nextRoute.includes("LiveWorkspace"));
+assert.ok(liveWorkspace.includes("answerLiveDecisionQuestion"));
+assert.ok(liveWorkspace.includes("Ask COANTO"));
+assert.ok(liveWorkspace.includes("localStorage.setItem"));
+assert.ok(liveWorkspace.includes("REAL ANALYSIS · NOT DEMO"));
 
 // Auth and onboarding must preserve the requested live destination without accepting external redirects.
 const authRoute = readFileSync("src/routes/auth.tsx", "utf8");
@@ -114,9 +165,14 @@ assert.ok(onboardingRoute.includes("consumeReturnTo()"));
 assert.ok(onboardingRoute.includes("window.location.assign(destination)"));
 
 // Type validation must generate the file-route tree first so newly added file routes are typed.
-const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
-assert.equal(pkg.scripts?.typecheck, "vite build --mode development && tsc --noEmit");
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
+  scripts?: Record<string, string>;
+};
+assert.equal(
+  pkg.scripts?.typecheck,
+  "vite build --mode development && tsc --noEmit",
+);
 
 console.log(
-  "PASS: decision revisions, counter-evidence, abstention, price constraints, safe links, fixture provenance, live projection, tenant-read boundary, isolated live route and auth-return contract.",
+  "PASS: preview decisions, grounded live Decision Event promotion, counter-evidence, abstention, safe links, tenant-read boundary, isolated live route and auth-return contract.",
 );
