@@ -34,28 +34,26 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
   const [session, setSession] = useState<
     "checking" | "signed-out" | "signed-in" | "error"
   >("checking");
-  const [ready, setReady] = useState(false),
-    [busy, setBusy] = useState(false);
-  const [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [url, setUrl] = useState(""),
-    [competitors, setCompetitors] = useState("");
-  const [history, setHistory] = useState<HistoryItem[]>([]),
-    [selected, setSelected] = useState("");
-  const [result, setResult] = useState<ReturnType<
-      typeof liveProjection
-    > | null>(null),
-    [evidence, setEvidence] = useState<LinkedEvidence[]>([]);
-  const [error, setError] = useState(""),
-    [ledgerError, setLedgerError] = useState(""),
-    [stamp, setStamp] = useState("");
-  const [question, setQuestion] = useState(""),
-    [answer, setAnswer] = useState("");
-  const [decisionContext, setDecisionContext] = useState(""),
-    [contextResult, setContextResult] = useState("");
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [url, setUrl] = useState("");
+  const [competitors, setCompetitors] = useState("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [selected, setSelected] = useState("");
+  const [result, setResult] = useState<ReturnType<typeof liveProjection> | null>(null);
+  const [evidence, setEvidence] = useState<LinkedEvidence[]>([]);
+  const [error, setError] = useState("");
+  const [ledgerError, setLedgerError] = useState("");
+  const [stamp, setStamp] = useState("");
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [decisionContext, setDecisionContext] = useState("");
+  const [contextResult, setContextResult] = useState("");
   const [decisionResponse, setDecisionResponse] = useState<DecisionResponse>("");
-  const mounted = useRef(true),
-    controller = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const controller = useRef<AbortController | null>(null);
 
   const initialize = useCallback(async () => {
     setSession("checking");
@@ -72,30 +70,23 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
         credentials: "same-origin",
         cache: "no-store",
       });
-      if (!response.ok)
-        throw new Error(
-          say(
-            "تعذّر قراءة سياق حسابك. أعد المحاولة.",
-            "Could not load your business context. Retry.",
-          ),
-        );
-      const body = object(await response.json()),
-        ctx = object(body["context"]);
+      if (!response.ok) throw new Error("context-read-failed");
+      const body = object(await response.json());
+      const ctx = object(body["context"]);
       if (!mounted.current) return;
       setReady(body["completed"] === true);
       if (typeof ctx["websiteUrl"] === "string") setUrl(ctx["websiteUrl"]);
       const items = await listAnalyses();
       if (mounted.current) setHistory(items);
     } catch {
-      if (mounted.current) {
-        setSession("error");
-        setError(
-          say(
-            "تعذّر الاتصال بخدمات الحساب. لا توجد نتيجة بديلة تجريبية.",
-            "Account services could not be reached. No demo result has been substituted.",
-          ),
-        );
-      }
+      if (!mounted.current) return;
+      setSession("error");
+      setError(
+        say(
+          "تعذّر الاتصال بخدمات الحساب. لا توجد نتيجة بديلة تجريبية.",
+          "Account services could not be reached. No demo result has been substituted.",
+        ),
+      );
     }
   }, [say]);
 
@@ -143,6 +134,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
     setDecisionContext("");
     setContextResult("");
     setDecisionResponse("");
+
     const id = knownId || projected.id;
     if (!id) {
       setLedgerError(
@@ -160,8 +152,8 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
       if (mounted.current)
         setLedgerError(
           say(
-            "تعذّر تحميل الأدلة المرتبطة. لا نعتمد النتيجة كتوصية مكتملة.",
-            "Linked evidence could not be loaded. This is not a complete recommendation.",
+            "تعذّر تحميل سجل الأدلة المرتبط. النتيجة المعروضة لا تصبح أكثر ثقة بسبب ذلك.",
+            "The linked evidence ledger could not be loaded. The displayed result does not become more trustworthy because of that.",
           ),
         );
     }
@@ -174,12 +166,9 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
     setResult(null);
     try {
       const row = await getAnalysis({ data: { id: selected } });
-      if (mounted.current)
-        await show(JSON.parse(row.json), row.id, row.createdAt);
+      if (mounted.current) await show(JSON.parse(row.json), row.id, row.createdAt);
     } catch {
-      setError(
-        say("تعذّر فتح التحليل المحفوظ.", "Could not open the saved analysis."),
-      );
+      setError(say("تعذّر فتح التحليل المحفوظ.", "Could not open the saved analysis."));
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -205,7 +194,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
           storeUrl: url.trim(),
           competitors: competitors
             .split(/[\n,]/)
-            .map((x) => x.trim())
+            .map((item) => item.trim())
             .filter(Boolean),
         }),
       });
@@ -216,27 +205,27 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             ? body["error"]
             : say("الفحص لم يكتمل.", "Analysis did not complete."),
         );
-      if (mounted.current) {
-        await show(body);
-        try {
-          setHistory(await listAnalyses());
-        } catch {
-          /* Analysis is still shown if history refresh fails. */
-        }
+      if (!mounted.current) return;
+      await show(body);
+      try {
+        setHistory(await listAnalyses());
+      } catch {
+        // The live result remains usable if history refresh fails.
       }
-    } catch (e) {
-      if (mounted.current)
-        setError(
-          e instanceof Error && e.name === "AbortError"
-            ? say(
-                "انتهت مهلة العرض. قد يكون الفحص ما زال يعمل على الخادم؛ راجع السجل قبل إعادته.",
-                "The display timed out. The server may still be processing; check history before retrying.",
-              )
-            : say(
-                "تعذّر إكمال الفحص. لا توجد نتيجة مؤكّدة من هذه المحاولة. ",
-                "The analysis could not complete. No result is confirmed for this attempt. ",
-              ) + (e instanceof Error ? e.message : ""),
-        );
+    } catch (caught) {
+      if (!mounted.current) return;
+      const timedOut = caught instanceof Error && caught.name === "AbortError";
+      setError(
+        timedOut
+          ? say(
+              "انتهت مهلة العرض. قد يكون الفحص ما زال يعمل على الخادم؛ راجع السجل قبل إعادته.",
+              "The display timed out. The server may still be processing; check history before retrying.",
+            )
+          : say(
+              "تعذّر إكمال الفحص. لا توجد نتيجة مؤكّدة من هذه المحاولة. ",
+              "The analysis could not complete. No result is confirmed for this attempt. ",
+            ) + (caught instanceof Error ? caught.message : ""),
+      );
     } finally {
       clearTimeout(timer);
       if (mounted.current) setBusy(false);
@@ -254,7 +243,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
     setContextResult(
       decision.posture === "INSUFFICIENT"
         ? say(
-            `سجّلت هذا السياق لهذه الجلسة فقط: “${decisionContext.trim()}”. القرار يبقى INSUFFICIENT لأن النقص الحالي في الدليل نفسه (${decision.promotionBlockedBy.join("، ") || "دليل مرتبط بالقرار"})، وليس شيئًا يمكنني ملؤه من كلام المستخدم.`,
+            `سجّلت هذا السياق لهذه الجلسة فقط: “${decisionContext.trim()}”. القرار يبقى INSUFFICIENT لأن النقص الحالي في الدليل نفسه (${decision.promotionBlockedBy.join("، ") || "دليل مرتبط بالقرار"})، وليس شيئًا يمكن ملؤه من كلام المستخدم.`,
             `Captured for this browser session only: “${decisionContext.trim()}”. The decision remains INSUFFICIENT because the current gap is evidence itself (${decision.promotionBlockedBy.join(", ") || "decision-linked evidence"}), not something user context can safely replace.`,
           )
         : say(
@@ -267,18 +256,26 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
   function recordResponse(value: DecisionResponse) {
     if (!result || !value) return;
     setDecisionResponse(value);
-    if (typeof window !== "undefined") {
-      const key = `coanto:live-response:${result.id || result.url || "unsaved"}`;
-      window.localStorage.setItem(
-        key,
-        JSON.stringify({
-          response: value,
-          posture: result.decision.posture,
-          at: new Date().toISOString(),
-        }),
-      );
-    }
+    if (typeof window === "undefined") return;
+    const key = `coanto:live-response:${result.id || result.url || "unsaved"}`;
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        response: value,
+        posture: result.decision.posture,
+        complete: result.decision.complete,
+        at: new Date().toISOString(),
+      }),
+    );
   }
+
+  const decision = result?.decision;
+  const bounded = Boolean(
+    decision && decision.posture !== "INSUFFICIENT" && !decision.complete,
+  );
+  const counterEvidenceMissing = Boolean(
+    decision && decision.posture !== "INSUFFICIENT" && !decision.evidenceAgainst.length,
+  );
 
   return (
     <section className="nx-live">
@@ -286,16 +283,11 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
         <Globe2 size={16} />
         EXTERNAL EVIDENCE MODE
       </span>
-      <h1>
-        {say(
-          "ابدأ بشركتك. وبالدليل المتاح.",
-          "Start with your business. And the available evidence.",
-        )}
-      </h1>
+      <h1>{say("ابدأ بشركتك. وبالدليل المتاح.", "Start with your business. And the available evidence.")}</h1>
       <p>
         {say(
-          "هذا المسار يستخدم خدمات COANTO الحقيقية. نعرض ما وصل فعلًا، نفصل تفسير AI عن المصدر، ونرفع Priority Matrix إلى Decision Event فقط عندما يكون الدليل المرتبط به كافيًا.",
-          "This path uses real COANTO services. We show what actually returned, separate AI interpretation from sources, and promote a priority-matrix item into a Decision Event only when its linked evidence is sufficient.",
+          "هذا المسار يستخدم خدمات COANTO الحقيقية. نعرض ما وصل فعلًا، نفصل تفسير AI عن المصدر، ولا نرفع توصية إلى Decision Event إلا بعد مرور مصادر القرار عبر Evidence Gate.",
+          "This path uses real COANTO services. We show what actually returned, separate AI interpretation from sources, and promote a recommendation into a Decision Event only after its decision sources pass the Evidence Gate.",
         )}
       </p>
 
@@ -305,11 +297,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
           {say("عم نتحقق من جلسة حسابك…", "Checking your account session…")}
         </div>
       )}
-      {error && (
-        <div className="nx-live-status" role="alert">
-          {error}
-        </div>
-      )}
+      {error && <div className="nx-live-status" role="alert">{error}</div>}
       {session === "error" && (
         <button className="nx-secondary" onClick={() => void initialize()}>
           {say("أعد الاتصال", "Retry connection")}
@@ -319,14 +307,12 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
       {session === "signed-out" && (
         <form
           className="nx-card nx-live-form"
-          onSubmit={(e) => {
-            e.preventDefault();
+          onSubmit={(event) => {
+            event.preventDefault();
             void signIn();
           }}
         >
-          <h3>
-            {say("ادخل بحساب COANTO", "Sign in with your COANTO account")}
-          </h3>
+          <h3>{say("ادخل بحساب COANTO", "Sign in with your COANTO account")}</h3>
           <p className="nx-small">
             {say(
               "نفس نظام الدخول الحقيقي. تبقى بيانات الجلسة في Cookie آمنة؛ لا نحفظ كلمة السر هنا.",
@@ -340,7 +326,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             autoComplete="username"
             required
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             dir="ltr"
           />
           <label htmlFor="nx-password">{say("كلمة السر", "Password")}</label>
@@ -350,21 +336,16 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             autoComplete="current-password"
             required
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             dir="ltr"
           />
           <div className="nx-button-row">
             <button disabled={busy} className="nx-primary">
-              {busy ? (
-                <Loader2 className="nx-loading" size={17} />
-              ) : (
-                <ArrowUpRight size={16} />
-              )}{" "}
+              {busy ? <Loader2 className="nx-loading" size={17} /> : <ArrowUpRight size={16} />}{" "}
               {say("دخول", "Sign in")}
             </button>
-            <a className="nx-secondary" href="/auth" target="_blank" rel="noreferrer">
+            <a className="nx-secondary" href="/auth" onClick={rememberLiveReturn}>
               {say("إنشاء حساب / استعادة الدخول", "Create account / recover access")}
-              <ExternalLink size={14} />
             </a>
           </div>
         </form>
@@ -379,6 +360,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
               "Authenticated account. A new analysis uses your existing account’s normal analysis allowance.",
             )}
           </div>
+
           {!ready && (
             <div className="nx-card">
               <h3>{say("سياق حسابك يحتاج إكمالًا", "Your account context needs completion")}</h3>
@@ -401,8 +383,8 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
 
           <form
             className="nx-card"
-            onSubmit={(e) => {
-              e.preventDefault();
+            onSubmit={(event) => {
+              event.preventDefault();
               void analyze();
             }}
           >
@@ -414,7 +396,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
               required
               dir="ltr"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(event) => setUrl(event.target.value)}
               placeholder="https://your-business.com"
             />
             <label htmlFor="nx-real-competitors">
@@ -424,7 +406,7 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
               id="nx-real-competitors"
               dir="ltr"
               value={competitors}
-              onChange={(e) => setCompetitors(e.target.value)}
+              onChange={(event) => setCompetitors(event.target.value)}
             />
             <div className="nx-button-row">
               <button className="nx-primary" disabled={busy || !ready || !safeSourceUrl(url)}>
@@ -445,11 +427,11 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             {history.length ? (
               <>
                 <label htmlFor="nx-history">{say("آخر 20 تحليلًا متاحًا", "Up to 20 recent analyses")}</label>
-                <select id="nx-history" value={selected} onChange={(e) => setSelected(e.target.value)}>
+                <select id="nx-history" value={selected} onChange={(event) => setSelected(event.target.value)}>
                   <option value="">{say("اختر تحليلًا", "Choose an analysis")}</option>
-                  {history.map((h) => (
-                    <option value={h.id} key={h.id}>
-                      {h.storeUrl} · {h.createdAt.slice(0, 10)}
+                  {history.map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.storeUrl} · {item.createdAt.slice(0, 10)}
                     </option>
                   ))}
                 </select>
@@ -472,21 +454,25 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
         </p>
       )}
 
-      {result && (
+      {result && decision && (
         <div className="nx-card">
           <span className="nx-mode-label">REAL ANALYSIS · NOT DEMO</span>
           <h3 style={{ marginTop: 16 }}>{say("Decision Event", "Decision Event")}</h3>
           <p className="nx-small">{stamp || say("تاريخ الفحص غير متاح", "Analysis time unavailable")}</p>
 
-          {result.decision.posture !== "INSUFFICIENT" ? (
+          {decision.posture !== "INSUFFICIENT" ? (
             <div className="nx-update-note">
-              <b>{result.decision.posture} · {result.decision.title}</b>
-              <p>{result.decision.why}</p>
-              {!result.decision.complete && (
+              <b>
+                {decision.posture}
+                {bounded ? " · BOUNDED" : " · EVIDENCE-COMPLETE"}
+                {decision.title ? ` · ${decision.title}` : ""}
+              </b>
+              <p>{decision.why}</p>
+              {bounded && (
                 <p className="nx-small">
                   {say(
-                    `هذا Decision Triage حقيقي لكنه غير مكتمل كـR60 Decision Brief. الناقص: ${result.decision.promotionBlockedBy.join("، ") || "دورة قرار كاملة"}.`,
-                    `This is a real Decision Triage, but not yet a complete R60 Decision Brief. Missing: ${result.decision.promotionBlockedBy.join(", ") || "full decision lifecycle"}.`,
+                    `هذه توصية قرار قابلة للاستخدام، لكنها ليست R60 Decision Brief مكتملًا. الناقص: ${decision.promotionBlockedBy.join("، ") || "دورة قرار كاملة"}. لا نرفع درجة اليقين بسبب وجود ACT أو TEST وحدها.`,
+                    `This is a usable bounded decision recommendation, not a complete R60 Decision Brief. Missing: ${decision.promotionBlockedBy.join(", ") || "full decision lifecycle"}. ACT or TEST alone does not increase certainty.`,
                   )}
                 </p>
               )}
@@ -495,71 +481,104 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             <div className="nx-update-note">
               <b>
                 INSUFFICIENT
-                {result.decision.candidatePosture ? ` · Candidate ${result.decision.candidatePosture}` : ""}
+                {decision.candidatePosture ? ` · Candidate ${decision.candidatePosture}` : ""}
               </b>
               <p>
                 {say(
-                  "التحليل الحقيقي قد يحتوي أولوية أو اتجاهًا، لكن COANTO لن يحوله إلى قرار نهائي من دون سبب ومصادر مرتبطة مباشرة بصف القرار.",
-                  "The real analysis may contain a priority or direction, but COANTO will not promote it to a final decision without a rationale and source URLs directly linked to that decision row.",
+                  "التحليل الحقيقي قد يحتوي اتجاهًا، لكن COANTO لن يحوله إلى قرار من دون Evidence Gate مكتمل وسبب ومصدر موثّق مرتبط مباشرة بالقرار.",
+                  "The real analysis may contain a direction, but COANTO will not promote it into a decision without a completed Evidence Gate, rationale, and a verified source directly linked to that decision.",
                 )}
               </p>
-              {result.decision.title && <p><b>{result.decision.title}</b></p>}
-              {!!result.decision.promotionBlockedBy.length && (
+              {decision.title && <p><b>{decision.title}</b></p>}
+              {!!decision.promotionBlockedBy.length && (
                 <p className="nx-small">
-                  {say("الناقص: ", "Missing: ")}{result.decision.promotionBlockedBy.join(" · ")}
+                  {say("الناقص: ", "Missing: ")}{decision.promotionBlockedBy.join(" · ")}
                 </p>
               )}
             </div>
           )}
 
-          {!!result.decision.sourceUrls.length && (
+          {!!decision.evidenceFor.length && (
             <details className="nx-details" open>
-              <summary>{say("Evidence For — المصادر المرتبطة بالقرار", "Evidence For — decision-linked sources")}</summary>
-              {result.decision.evidenceFor.map((item, i) => <p key={`for-${i}`}>{item}</p>)}
-              {result.decision.sourceUrls.map((u) => (
-                <div key={u} className="nx-live-source">
-                  <a href={u} target="_blank" rel="noreferrer">{u}<ExternalLink size={12} /></a>
+              <summary>{say("Supporting interpretation — لماذا يميل التحليل لهذا الاتجاه", "Supporting interpretation — why the analysis leans this way")}</summary>
+              <p className="nx-small">
+                {say(
+                  "النص أدناه من تفسير نموذج AI، وليس حقيقة مستقلة بحد ذاته. تحقق منه مقابل المصادر الموثّقة في القسم التالي.",
+                  "The text below is AI interpretation, not an independently established fact. Check it against the gated sources in the next section.",
+                )}
+              </p>
+              {decision.evidenceFor.map((item, index) => <p key={`for-${index}`}>{item}</p>)}
+            </details>
+          )}
+
+          {!!decision.sourceUrls.length && (
+            <details className="nx-details" open>
+              <summary>{say("Gated Sources — المصادر التي اجتازت بوابة القرار", "Gated Sources — sources that passed the decision gate")}</summary>
+              <p className="nx-small">
+                {say(
+                  "COANTO يسمح هنا فقط بروابط مطابقة لمصدر مرصود أو مصدر Grounding أعاده مزوّد AI؛ وجود الرابط لا يثبت وحده كل تفسير مكتوب فوقه.",
+                  "COANTO only allows an exact observed URL or provider-grounded source here; the presence of a link does not by itself prove every interpretation written above it.",
+                )}
+              </p>
+              {decision.sourceUrls.map((source) => (
+                <div key={source} className="nx-live-source">
+                  <a href={source} target="_blank" rel="noreferrer">
+                    {source}<ExternalLink size={12} />
+                  </a>
                 </div>
               ))}
             </details>
           )}
 
-          <details className="nx-details">
-            <summary>{say("Evidence Against", "Evidence Against")}</summary>
-            {result.decision.evidenceAgainst.length ? (
-              result.decision.evidenceAgainst.map((item, i) => <p key={`against-${i}`}>{item}</p>)
+          <details className="nx-details" open={counterEvidenceMissing}>
+            <summary>{say("Counter-evidence / Red Team", "Counter-evidence / Red Team")}</summary>
+            {decision.evidenceAgainst.length ? (
+              <>
+                <p className="nx-small">
+                  {say(
+                    "هذه نقاط معارضة سجّلها التحليل. تعامل معها كتفسير يحتاج نفس مراجعة المصادر، لا كحقائق مستقلة.",
+                    "These are opposing points recorded by the analysis. Treat them as interpretations that require the same source review, not independent facts.",
+                  )}
+                </p>
+                {decision.evidenceAgainst.map((item, index) => <p key={`against-${index}`}>{item}</p>)}
+              </>
             ) : (
-              <p>{say("لم يُسجل دليل معارض مرتبط بالقرار. هذا نقص، وليس إثباتًا لعدم وجود اعتراض.", "No decision-linked counter-evidence was recorded. That is a gap, not proof that no counter-case exists.")}</p>
+              <div className="nx-live-status" role="status">
+                {say(
+                  "EVIDENCE GAP — لم يُسجل Counter-evidence موثّق لهذا القرار. هذا لا يعني أن الاعتراض غير موجود؛ لذلك يبقى القرار BOUNDED وغير مكتمل.",
+                  "EVIDENCE GAP — no verified counter-evidence was recorded for this decision. That does not mean no counter-case exists; the decision remains BOUNDED and incomplete.",
+                )}
+              </div>
             )}
           </details>
 
-          <details className="nx-details">
+          <details className="nx-details" open>
             <summary>{say("Unknowns + Trigger + Next Action", "Unknowns + Trigger + Next Action")}</summary>
-            {result.decision.unknowns.length ? (
-              <ul>{result.decision.unknowns.map((u, i) => <li key={i}>{u}</li>)}</ul>
+            {decision.unknowns.length ? (
+              <ul>{decision.unknowns.map((unknown, index) => <li key={index}>{unknown}</li>)}</ul>
             ) : (
               <p>{say("لم يسجل التحليل مجهولات صريحة. هذا لا يعني أنها غير موجودة.", "The analysis did not record explicit unknowns. That does not mean none exist.")}</p>
             )}
-            <p><b>Trigger:</b> {result.decision.trigger || say("غير موثّق بعد", "Not documented yet")}</p>
-            <p><b>Next action:</b> {result.decision.nextAction || say("غير موثّقة بما يكفي", "Not sufficiently documented")}</p>
+            <p><b>Trigger:</b> {decision.trigger || say("غير موثّق بعد", "Not documented yet")}</p>
+            <p><b>Next action:</b> {decision.nextAction || say("غير موثّقة بما يكفي", "Not sufficiently documented")}</p>
           </details>
 
           <div className="nx-card nx-live-form">
             <h3>{say("Ask COANTO — ضمن هذا الحدث فقط", "Ask COANTO — this event only")}</h3>
             <p className="nx-small">
               {say(
-                "هذا مساعد Grounded حتمي للـDecision Event المعروض، وليس Chatbot حرًا. إذا الجواب غير موجود بالأدلة، سيقول ذلك.",
-                "This is a deterministic grounded helper for the displayed Decision Event, not an open-ended chatbot. If the answer is not in the event evidence, it abstains.",
+                "هذا مساعد Grounded حتمي للـDecision Event المعروض، وليس Chatbot حرًا. إذا الجواب غير موجود ضمن الحدث، يتوقف بدل التخمين.",
+                "This is a deterministic grounded helper for the displayed Decision Event, not an open-ended chatbot. If the answer is not present in the event, it abstains instead of guessing.",
               )}
             </p>
             <input
               value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder={say("ليش؟ شو الدليل؟ شو ضد القرار؟ شو الناقص؟ متى أراجعه؟", "Why? Evidence? Counter-case? Unknowns? When should I revisit?")}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder={say("ليش؟ شو المصدر؟ شو ضد القرار؟ شو الناقص؟ متى أراجعه؟", "Why? Source? Counter-case? Unknowns? When should I revisit?")}
             />
             <div className="nx-button-row">
               <button type="button" className="nx-primary" disabled={!question.trim()} onClick={askDecision}>
-                {say("اسأل ضمن الأدلة", "Ask from evidence")}
+                {say("اسأل ضمن الحدث", "Ask from this event")}
               </button>
             </div>
             {answer && <div className="nx-live-status">{answer}</div>}
@@ -569,13 +588,13 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             <h3>{say("هل في سياق داخلي قد يغيّر القرار؟", "Could internal context change the decision?")}</h3>
             <p className="nx-small">
               {say(
-                "اكتب قيدًا واحدًا فقط يمكن أن يغيّر القرار، مثل حد هامش، مخزون، هدف أو التزام تجاري. يبقى هذا النص في هذه الجلسة ولا يتحول إلى دليل سوق.",
+                "اكتب قيدًا واحدًا يمكن أن يغيّر القرار، مثل حد هامش، مخزون، هدف أو التزام تجاري. يبقى النص في هذه الجلسة ولا يتحول إلى دليل سوق.",
                 "Add one constraint that could change the decision, such as a margin floor, inventory state, objective or commercial commitment. It stays session-only and never becomes market evidence.",
               )}
             </p>
             <input
               value={decisionContext}
-              onChange={(e) => setDecisionContext(e.target.value)}
+              onChange={(event) => setDecisionContext(event.target.value)}
               placeholder={say("مثال: لا أستطيع خفض السعر تحت هامش X", "Example: I cannot price below my margin floor")}
             />
             <div className="nx-button-row">
@@ -602,7 +621,13 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
                   onClick={() => recordResponse(value)}
                   key={value}
                 >
-                  {value === "accept" ? say("أقبل", "Accept") : value === "modify" ? say("أعدّل", "Modify") : value === "defer" ? say("أنتظر", "Defer") : say("أرفض", "Reject")}
+                  {value === "accept"
+                    ? say("أقبل", "Accept")
+                    : value === "modify"
+                      ? say("أعدّل", "Modify")
+                      : value === "defer"
+                        ? say("أنتظر", "Defer")
+                        : say("أرفض", "Reject")}
                 </button>
               ))}
             </div>
@@ -610,15 +635,17 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
 
           <h3 style={{ marginTop: 24 }}>{say("الإشارات التي وصلتنا", "Signals returned")}</h3>
           {result.signals.length ? (
-            result.signals.slice(0, 3).map((s, i) => (
-              <div className="nx-live-source" key={i}>
+            result.signals.slice(0, 3).map((signal, index) => (
+              <div className="nx-live-source" key={index}>
                 <small>AI INFERENCE · {say("تفسير يحتاج مراجعة المصدر", "Interpretation to verify against its source")}</small>
-                <h4>{s.title}</h4>
-                <p>{s.description}</p>
-                {s.sources.map((u) => (
-                  <div key={u}><a href={u} target="_blank" rel="noreferrer">{u}<ExternalLink size={12} /></a></div>
+                <h4>{signal.title}</h4>
+                <p>{signal.description}</p>
+                {signal.sources.map((source) => (
+                  <div key={source}>
+                    <a href={source} target="_blank" rel="noreferrer">{source}<ExternalLink size={12} /></a>
+                  </div>
                 ))}
-                {!s.sources.length && (
+                {!signal.sources.length && (
                   <small>{say("لا توجد روابط مصادر في هذه الملاحظة. لا تعتمدها كحقيقة.", "This observation has no source links. Do not treat it as an established fact.")}</small>
                 )}
               </div>
@@ -633,15 +660,17 @@ export function LiveWorkspace({ lang }: { lang: Lang }) {
             {!evidence.length && !ledgerError && (
               <p>{say("لا توجد أدلة محفوظة مرتبطة بهذه النتيجة.", "No saved evidence is linked to this result.")}</p>
             )}
-            {evidence.map((e) => (
-              <div className="nx-live-source" key={e.id}>
-                <small>{e.kind} · {e.status} · {e.group}</small>
-                {safeSourceUrl(e.url) && (
-                  <a href={safeSourceUrl(e.url)!} target="_blank" rel="noreferrer">{e.url}</a>
+            {evidence.map((item) => (
+              <div className="nx-live-source" key={item.id}>
+                <small>{item.kind} · {item.status} · {item.group}</small>
+                {safeSourceUrl(item.url) && (
+                  <a href={safeSourceUrl(item.url)!} target="_blank" rel="noreferrer">{item.url}</a>
                 )}
-                <p>{e.content}</p>
-                <small>{say("رُصد: ", "Observed: ")}{e.observedAt || "Unknown"} · {say("جُلب: ", "Retrieved: ")}{e.retrievedAt || "Unknown"}</small>
-                <small dir="ltr">ID: {e.id}</small>
+                <p>{item.content}</p>
+                <small>
+                  {say("رُصد: ", "Observed: ")}{item.observedAt || "Unknown"} · {say("جُلب: ", "Retrieved: ")}{item.retrievedAt || "Unknown"}
+                </small>
+                <small dir="ltr">ID: {item.id}</small>
               </div>
             ))}
           </details>
