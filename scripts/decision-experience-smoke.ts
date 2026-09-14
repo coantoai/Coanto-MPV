@@ -30,76 +30,43 @@ assert.ok(exported.includes("DEMO"));
 assert.ok(exported.includes("A5"));
 assert.ok(!exported.includes("When will the rival restock?"));
 assert.ok(!exported.includes("Hold your price for now"));
-assert.ok(
-  answerQuestion(event, "why", "en", true, empty).includes(
-    "not automatically cut",
-  ),
-);
-assert.ok(
-  answerQuestion(event, "other", "en", false, empty).includes(
-    "does not contain evidence",
-  ),
-);
-assert.ok(
-  answerQuestion(event, "margin", "en", false, empty).includes(
-    "cannot infer your profit",
-  ),
-);
-for (const value of [null, NaN, Infinity, -2, 0, 0.5, 10001])
-  assert.equal(floorScenario(value), null);
+assert.ok(answerQuestion(event, "why", "en", true, empty).includes("not automatically cut"));
+assert.ok(answerQuestion(event, "other", "en", false, empty).includes("does not contain evidence"));
+assert.ok(answerQuestion(event, "margin", "en", false, empty).includes("cannot infer your profit"));
+for (const value of [null, NaN, Infinity, -2, 0, 0.5, 10001]) assert.equal(floorScenario(value), null);
 assert.equal(floorScenario(180)?.allowed, true);
 assert.equal(floorScenario(190)?.allowed, false);
 assert.equal(floorScenario(190)?.difference, -10);
-for (const value of [
-  "javascript:alert(1)",
-  "data:text/html,test",
-  "https://user:pass@example.com",
-  "not a url",
-])
-  assert.equal(safeSourceUrl(value), null);
+for (const value of ["javascript:alert(1)", "data:text/html,test", "https://user:pass@example.com", "not a url"]) assert.equal(safeSourceUrl(value), null);
 assert.equal(safeSourceUrl("https://example.com"), "https://example.com/");
 for (const e of events) {
   assert.ok(e.against.en && e.unknowns.length && e.trigger.en && e.review.en);
   assert.ok(briefText(e, "ar", false, empty).includes("DEMO"));
 }
-assert.deepEqual(
-  new Set(events.map((e) => e.posture)),
-  new Set(["WATCH", "TEST", "IGNORE", "ACT", "INSUFFICIENT"]),
-);
+assert.deepEqual(new Set(events.map((e) => e.posture)), new Set(["WATCH", "TEST", "IGNORE", "ACT", "INSUFFICIENT"]));
+
 assert.deepEqual(
   liveProjection({
-    signals: [
-      {
-        title: "Observation",
-        description: "Interpretation",
-        sourceUrls: ["javascript:alert(1)", "https://example.com"],
-      },
-    ],
+    signals: [{ title: "Observation", description: "Interpretation", sourceUrls: ["javascript:alert(1)", "https://example.com"] }],
   }).signals[0].sources,
   ["https://example.com/"],
 );
 assert.deepEqual(liveProjection(null).signals, []);
-assert.equal(
-  liveProjection({ metadata: { evidenceLedgerPersisted: "true" } }).saved,
-  false,
-);
+assert.equal(liveProjection({ metadata: { evidenceLedgerPersisted: "true" } }).saved, false);
 
-// A live Decision Event is promoted only after the server-side decision-source gate.
 const promoted = deriveLiveDecision({
   metadata: { decisionSourceLinkageChecked: true },
-  priorityMatrix: [
-    {
-      zone: "do-now",
-      title: "Protect the current offer",
-      reason: "A verified competitor changed the offer while your public position stayed unchanged.",
-      sourceUrls: ["https://example.com/offer"],
-      decisionEvidenceStatus: "linked",
-      evidenceFor: ["Offer changed on the cited public page."],
-      counterEvidence: ["Duration of the change is not yet known."],
-      trigger: "Recheck when the competitor offer expires or your inventory constraint changes.",
-      nextAction: "Review the offer before changing price.",
-    },
-  ],
+  priorityMatrix: [{
+    zone: "do-now",
+    title: "Protect the current offer",
+    reason: "A verified competitor changed the offer while your public position stayed unchanged.",
+    sourceUrls: ["https://example.com/offer"],
+    decisionEvidenceStatus: "linked",
+    evidenceFor: ["Offer changed on the cited public page."],
+    counterEvidence: ["Duration of the change is not yet known."],
+    trigger: "Recheck when the competitor offer expires or your inventory constraint changes.",
+    nextAction: "Review the offer before changing price.",
+  }],
   unknowns: ["Competitor inventory is unknown."],
 });
 assert.equal(promoted.posture, "ACT");
@@ -110,7 +77,6 @@ assert.ok(answerLiveDecisionQuestion(promoted, "ليش؟").includes("verified co
 assert.ok(answerLiveDecisionQuestion(promoted, "شو ضد القرار؟").includes("Duration"));
 assert.ok(answerLiveDecisionQuestion(promoted, "سؤال غير موجود").includes("لن أملأ الفراغ"));
 
-// Historic/raw model output cannot self-promote even when it contains a valid-looking URL.
 const historicUngated = deriveLiveDecision({
   priorityMatrix: [{
     zone: "act",
@@ -127,53 +93,48 @@ assert.ok(historicUngated.promotionBlockedBy.includes("decision-source linkage g
 
 const blocked = deriveLiveDecision({
   metadata: { decisionSourceLinkageChecked: true },
-  priority_matrix: [
-    {
-      zone: "test",
-      title: "Try a reversible response",
-      rationale: "The model sees a potentially material change.",
-      sourceUrls: ["javascript:alert(1)"],
-      decisionEvidenceStatus: "unlinked",
-    },
-  ],
+  priority_matrix: [{
+    zone: "test",
+    title: "Try a reversible response",
+    rationale: "The model sees a potentially material change.",
+    sourceUrls: ["javascript:alert(1)"],
+    decisionEvidenceStatus: "unlinked",
+  }],
 });
 assert.equal(blocked.posture, "INSUFFICIENT");
 assert.equal(blocked.candidatePosture, "TEST");
 assert.ok(blocked.promotionBlockedBy.includes("verified decision-source linkage"));
 assert.ok(blocked.promotionBlockedBy.includes("decision-linked source URLs"));
 
-// Regression boundary: new evidence reads must scope ownership BEFORE reading shared records.
-const reader = readFileSync(
-  "src/lib/decision-experience/live.functions.ts",
-  "utf8",
-);
-assert.ok(
-  reader.indexOf('.from("analyses")') <
-    reader.indexOf('.from("coanto_evidence")'),
-);
+const reader = readFileSync("src/lib/decision-experience/live.functions.ts", "utf8");
+assert.ok(reader.indexOf('.from("analyses")') < reader.indexOf('.from("coanto_evidence")'));
 assert.ok(reader.match(/\.eq\("user_id", context\.userId\)/g)!.length === 2);
 assert.ok(reader.includes("if (owned.error || !owned.data)"));
 assert.ok(reader.includes('.in("id", ids)'));
 
-// Live E2E must remain isolated and must not replace the preserved R1–R60 preview.
+// /live must use the customer-first visual experience while /next remains preserved.
 const liveRoute = readFileSync("src/routes/live.tsx", "utf8");
 const nextRoute = readFileSync("src/routes/next.tsx", "utf8");
-const liveWorkspace = readFileSync(
-  "src/components/decision-experience/LiveWorkspace.tsx",
-  "utf8",
-);
+const liveProduct = readFileSync("src/components/decision-experience/LiveProductExperience.tsx", "utf8");
+const liveCss = readFileSync("src/components/decision-experience/live-product.css", "utf8");
 assert.ok(liveRoute.includes('createFileRoute("/live")'));
-assert.ok(liveRoute.includes("<LiveWorkspace lang=\"ar\" />"));
-assert.ok(liveRoute.includes('anchor.href = "/auth?next=/live"'));
+assert.ok(liveRoute.includes("<LiveProductExperience />"));
+assert.ok(liveRoute.includes("live-product.css?url"));
+assert.ok(!liveRoute.includes("<LiveWorkspace"));
 assert.ok(nextRoute.includes('createFileRoute("/next")'));
 assert.ok(nextRoute.includes("DecisionExperience"));
-assert.ok(!nextRoute.includes("LiveWorkspace"));
-assert.ok(liveWorkspace.includes("answerLiveDecisionQuestion"));
-assert.ok(liveWorkspace.includes("Ask COANTO"));
-assert.ok(liveWorkspace.includes("localStorage.setItem"));
-assert.ok(liveWorkspace.includes("REAL ANALYSIS · NOT DEMO"));
+assert.ok(!nextRoute.includes("LiveProductExperience"));
+assert.ok(liveProduct.includes("من موقع الشركة إلى قرار واضح"));
+assert.ok(liveProduct.includes("المشهد التنافسي"));
+assert.ok(liveProduct.includes("الإشارات الأهم"));
+assert.ok(liveProduct.includes("الدليل، الاعتراض، وما لا نعرفه"));
+assert.ok(liveProduct.includes("answerLiveDecisionQuestion"));
+assert.ok(liveProduct.includes("localStorage.setItem"));
+assert.ok(liveProduct.includes("افتح تحليلًا سابقًا بدل استهلاك API جديد"));
+assert.ok(liveCss.includes(".lp-competitor-grid"));
+assert.ok(liveCss.includes(".lp-evidence-grid"));
+assert.ok(liveCss.includes("@media (max-width: 680px)"));
 
-// Auth and onboarding must preserve the requested live destination without accepting external redirects.
 const authRoute = readFileSync("src/routes/auth.tsx", "utf8");
 const onboardingRoute = readFileSync("src/routes/onboarding.tsx", "utf8");
 assert.ok(authRoute.includes("const RETURN_TO_KEY = 'coanto:return-to'"));
@@ -184,15 +145,7 @@ assert.ok(authRoute.includes("authCallbackUrl()"));
 assert.ok(onboardingRoute.includes("consumeReturnTo()"));
 assert.ok(onboardingRoute.includes("window.location.assign(destination)"));
 
-// Type validation must generate the file-route tree first so newly added file routes are typed.
-const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
-  scripts?: Record<string, string>;
-};
-assert.equal(
-  pkg.scripts?.typecheck,
-  "vite build --mode development && tsc --noEmit",
-);
+const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
+assert.equal(pkg.scripts?.typecheck, "vite build --mode development && tsc --noEmit");
 
-console.log(
-  "PASS: preview decisions, server-gated live Decision Event promotion, historic-output blocking, counter-evidence, abstention, safe links, tenant-read boundary, isolated live route and auth-return contract.",
-);
+console.log("PASS: preserved R1-R60 preview, customer-first visual live E2E, server-gated decisions, evidence/counter-evidence, safe links, tenant ownership and auth-return contract.");
