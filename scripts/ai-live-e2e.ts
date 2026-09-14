@@ -20,7 +20,7 @@ async function main(){
   if(!discovered.length){const legacy=await discoverCompetitors(main);discovered=filterCommercialCompetitors(main,[...grounded.snapshots,...legacy]);}
   if(!discovered.length)throw new Error(`E2E discovery returned no verified competitors (gemini=${grounded.status}, candidates=${grounded.candidateCount}, snapshots=${grounded.snapshots.length}).`);
 
-  const prompt=buildPrompt(main,discovered);
+  const prompt=`${buildPrompt(main,discovered)}\n\nDECISION SOURCE URL RULE: For every priority_matrix.sourceUrls entry, use only an exact URL string already present in Target evidence or Candidate evidence unless your web-search tool actually returned another exact URL. Never construct, infer, or guess a deeper URL path on a known domain. If you cannot cite an exact observed or tool-grounded URL for that decision row, return sourceUrls as an empty array.`;
   const configured=providers.filter((provider)=>Boolean(process.env[keys[provider]]));
   if(!configured.length)throw new Error('No AI provider secret is configured for the live E2E test.');
 
