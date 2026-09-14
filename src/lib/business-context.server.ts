@@ -1,5 +1,6 @@
 import { getDatabase } from './database.server';
 import { validateTargetUrl } from './analyze.server';
+import { DECISION_SOURCE_URL_RULE } from './decision-source-contract';
 
 export const BUSINESS_MODELS = ['ecommerce','saas','services','marketplace','retail','other'] as const;
 export const COMPANY_STAGES = ['prelaunch','early','growing','established'] as const;
@@ -142,5 +143,7 @@ export function businessContextForPrompt(context: BusinessContext | null): strin
     `Primary market: ${context.primaryMarket}`, `Target markets: ${context.targetMarkets.join(', ') || context.primaryMarket}`, `Target customer: ${context.targetCustomer}`,
     `Value proposition: ${context.valueProposition}`, `Products/services: ${context.productsServices.join(', ')}`, `Competitive goals: ${context.competitiveGoals.join(', ')}`,
     `Known competitors supplied by user (leads only, not verified evidence): ${context.knownCompetitors.join(', ') || 'none'}`,
+    'END OWNER-PROVIDED BUSINESS CONTEXT.',
+    DECISION_SOURCE_URL_RULE,
   ].join('\n');
 }
