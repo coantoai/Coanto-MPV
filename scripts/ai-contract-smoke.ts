@@ -70,7 +70,7 @@ const gatedInput = validateAiOutput({
     title: 'Bounded response test',
     zone: 'test',
     why: 'A verified competitor changed its offer.',
-    sourceUrls: ['https://example.com/', 'https://invented.example/fake'],
+    sourceUrls: ['https://example.com/', 'https://example.com/fabricated-path', 'https://invented.example/fake'],
     evidenceFor: ['Competitor offer is publicly visible.'],
     counterEvidence: ['No internal conversion or margin response is known.'],
     trigger: 'Reopen if the competitor removes the offer or internal constraints change.',
@@ -86,7 +86,7 @@ const gatedSignals = gated.signals as Array<Record<string, unknown>>;
 if (gatedSignals.length !== 1 || gatedSignals[0]?.title !== 'Supported signal') throw new Error('Evidence gate did not remove an unlinked signal.');
 const gatedMatrix = gated.priorityMatrix as Array<Record<string, unknown>>;
 if (!Array.isArray(gatedMatrix) || gatedMatrix.length !== 1) throw new Error('Evidence gate dropped the decision row unexpectedly.');
-if (JSON.stringify(gatedMatrix[0]?.sourceUrls) !== JSON.stringify(['https://example.com/'])) throw new Error('Decision source gate did not remove an unverified decision URL.');
+if (JSON.stringify(gatedMatrix[0]?.sourceUrls) !== JSON.stringify(['https://example.com/'])) throw new Error('Decision source gate did not remove an unverified or fabricated same-host decision URL.');
 if (gatedMatrix[0]?.decisionEvidenceStatus !== 'linked') throw new Error('Verified decision row was not marked linked.');
 const liveDecision = deriveLiveDecision(gated);
 if (liveDecision.posture !== 'TEST' || liveDecision.complete !== true) throw new Error('Verified decision row did not promote into a complete live Decision Event.');
@@ -94,17 +94,18 @@ if (JSON.stringify(liveDecision.sourceUrls) !== JSON.stringify(['https://example
 const gatedMetadata = gated.metadata as Record<string, unknown>;
 if (gatedMetadata?.claimLinkageChecked !== true || gatedMetadata?.sourceCount !== 2 || gatedMetadata?.evidenceStrength !== 'medium') throw new Error('Evidence confidence metadata is not calibrated by source coverage.');
 if (gatedMetadata?.decisionSourceLinkageChecked !== true || gatedMetadata?.unlinkedDecisionRows !== 0) throw new Error('Decision-source linkage metadata is missing or incorrect.');
+if (gatedMetadata?.decisionSourcePolicy !== 'exact-observed-url-or-provider-grounded-source') throw new Error('Strict decision-source policy marker is missing.');
 const gatedSnapshot = gated.snapshot as Record<string, unknown>;
 if (gatedSnapshot?.competitorCount !== 1 || gatedSnapshot?.meaningfulSignals !== 1) throw new Error('Post-gate snapshot counts were not recalculated.');
 
 const unlinked = enforceEvidence(validateAiOutput({
   competitors: [{ name: 'Example Competitor', url: 'https://example.com/', why: 'Verified overlap.' }],
   signals: [], scenarios: [], action_plan: [], threats: [], opportunities: [], trust: [], unknowns: [],
-  priority_matrix: [{ title: 'Unsafe recommendation', zone: 'do-now', why: 'Looks plausible.', sourceUrls: ['https://invented.example/fake'] }],
+  priority_matrix: [{ title: 'Unsafe recommendation', zone: 'do-now', why: 'Looks plausible.', sourceUrls: ['https://example.com/fake'] }],
   summary: 'Summary', next_action: 'Act', threat_level: 'medium', opportunity_level: 'medium',
 }), baseline, [verifiedCompetitor], []);
 const blockedDecision = deriveLiveDecision(unlinked);
-if (blockedDecision.posture !== 'INSUFFICIENT') throw new Error('Unverified decision URL incorrectly promoted a live decision.');
+if (blockedDecision.posture !== 'INSUFFICIENT') throw new Error('Fabricated same-host decision URL incorrectly promoted a live decision.');
 if ((unlinked.metadata as Record<string, unknown>)?.unlinkedDecisionRows !== 1) throw new Error('Unlinked decision row was not counted.');
 
 let rejected = false;
