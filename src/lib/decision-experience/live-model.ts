@@ -80,13 +80,15 @@ function decisionNextAction(item: Record<string, unknown>, root: Record<string, 
 }
 
 /**
- * Promotes a real priority-matrix row into a Decision Event only when the row
- * carries a recognized posture, an explanation, and direct source URLs.
- * Missing counter-evidence/trigger keep the event explicitly bounded rather
- * than being fabricated from unrelated analysis-wide evidence.
+ * Promotes a real priority-matrix row into a Decision Event only after the
+ * server Evidence Gate has checked decision-source linkage. Historic/raw model
+ * output can still be displayed as inference, but it cannot self-promote merely
+ * because it contains a plausible-looking URL.
  */
 export function deriveLiveDecision(value: unknown): LiveDecision {
   const root = object(value);
+  const metadata = object(root["metadata"]);
+  const sourceGateChecked = metadata["decisionSourceLinkageChecked"] === true;
   const unknowns = strings(root["unknowns"]);
   const matrix = objectArray(root["priorityMatrix"] ?? root["priority_matrix"]);
   const candidate = matrix
@@ -111,18 +113,21 @@ export function deriveLiveDecision(value: unknown): LiveDecision {
   }
 
   const item = candidate.item;
+  const rowSourceLinked = item["decisionEvidenceStatus"] === "linked";
   const why = decisionWhy(item);
   const sources = sourceList(item["sourceUrls"], item["source_urls"], item["evidenceUrls"], item["evidence_urls"]);
   const evidenceFor = textList(item["evidenceFor"], item["evidence_for"], item["evidence"], item["supportingEvidence"]);
   const evidenceAgainst = textList(item["counterEvidence"], item["counter_evidence"], item["evidenceAgainst"], item["evidence_against"], item["against"]);
   const trigger = decisionTrigger(item);
   const blocked: string[] = [];
+  if (!sourceGateChecked) blocked.push("decision-source linkage gate");
+  if (!rowSourceLinked) blocked.push("verified decision-source linkage");
   if (!why) blocked.push("decision rationale");
   if (!sources.length) blocked.push("decision-linked source URLs");
   if (!evidenceAgainst.length) blocked.push("counter-evidence");
   if (!trigger) blocked.push("reopening trigger");
 
-  const promotable = Boolean(why && sources.length);
+  const promotable = Boolean(sourceGateChecked && rowSourceLinked && why && sources.length);
   return {
     posture: promotable ? candidate.posture : "INSUFFICIENT",
     candidatePosture: candidate.posture,
