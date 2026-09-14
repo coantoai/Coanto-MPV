@@ -1,18 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { MouseEvent } from "react";
-import { LiveWorkspace } from "@/components/decision-experience/LiveWorkspace";
+import { LiveProductExperience } from "@/components/decision-experience/LiveProductExperience";
 import experienceCss from "@/components/decision-experience/experience.css?url";
+import liveProductCss from "@/components/decision-experience/live-product.css?url";
 
 function CoantoLiveE2E() {
-  function preserveLiveReturn(event: MouseEvent<HTMLElement>) {
-    const target = event.target as HTMLElement | null;
-    const anchor = target?.closest('a[href="/auth"]') as HTMLAnchorElement | null;
-    if (!anchor) return;
-    anchor.href = "/auth?next=/live";
-  }
-
   return (
-    <main className="nx-shell" dir="rtl" onClickCapture={preserveLiveReturn}>
+    <main className="nx-shell" dir="rtl">
       <header className="nx-topbar">
         <a className="nx-brand" href="/live" aria-label="COANTO Live">
           COANTO
@@ -23,8 +16,7 @@ function CoantoLiveE2E() {
         </div>
       </header>
       <section className="nx-stage">
-        <div className="nx-kicker">EVIDENCE → INTELLIGENCE → DECISION</div>
-        <LiveWorkspace lang="ar" />
+        <LiveProductExperience />
       </section>
     </main>
   );
@@ -36,11 +28,14 @@ export const Route = createFileRoute("/live")({
       { title: "COANTO — Live Decision Intelligence" },
       {
         name: "description",
-        content: "Authenticated COANTO live E2E: real business context, real analysis and linked evidence.",
+        content: "COANTO live E2E: company, competitors, signals, evidence and a bounded decision in one visual flow.",
       },
       { name: "robots", content: "noindex, nofollow" },
     ],
-    links: [{ rel: "stylesheet", href: experienceCss }],
+    links: [
+      { rel: "stylesheet", href: experienceCss },
+      { rel: "stylesheet", href: liveProductCss },
+    ],
   }),
   component: CoantoLiveE2E,
 });
