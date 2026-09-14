@@ -42,9 +42,9 @@ function normalizeSignal(item: Record<string, unknown>) {
 function normalizeMatrixItem(item: Record<string, unknown>) {
   const raw = stringValue(item['zone']) || stringValue(item['bucket']) || stringValue(item['quadrant']);
   const key = raw.toLowerCase().replace(/[_\s]+/g, '-');
-  const zone = /^(do-now|now|execute-now|نفذ-الآن|نفّذ-الآن)$/.test(key) ? 'do-now'
+  const zone = /^(do-now|now|execute-now|execute|act|نفذ|نفّذ|نفذ-الآن|نفّذ-الآن)$/.test(key) ? 'do-now'
     : /^(test|pilot|experiment|اختبر)$/.test(key) ? 'test'
-    : /^(monitor|watch|راقب)$/.test(key) ? 'monitor'
+    : /^(monitor|monitor-watch|watch|observe|راقب)$/.test(key) ? 'monitor'
     : /^(ignore|تجاهل)$/.test(key) ? 'ignore'
     : raw;
   return { ...item, ...(zone ? { zone } : {}) };
