@@ -11,7 +11,6 @@ import {
 } from '@/lib/alerts-reports.functions';
 import type { AlertPreferences } from '@/lib/alerts-reports.server';
 
-// @ts-expect-error TanStack route types are generated separately.
 export const Route = createFileRoute('/alerts')({
   component: AlertsPage,
   head: () => ({ meta: [{ title: 'COANTO — التنبيهات' }, { name: 'description', content: 'تنبيهات تنافسية مرتبطة بالأدلة والقرارات.' }] }),
