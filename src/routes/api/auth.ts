@@ -55,8 +55,8 @@ export const Route = createFileRoute('/api/auth')({
       }
 
       if (action === 'verify-email') {
-        const { data, error } = await client.auth.verifyEmail({ email, otp });
         if (!/^\d{6}$/.test(otp)) return json(request, { error: 'أدخل رمز التحقق المكوّن من 6 أرقام.' }, 400);
+        const { data, error } = await client.auth.verifyEmail({ email, otp });
         if (error) return json(request, { error: 'رمز التحقق غير صحيح أو انتهت صلاحيته.' }, 400);
         if (!data?.accessToken) return json(request, { error: 'تم تأكيد البريد ولكن تعذّر إنشاء جلسة الدخول.' }, 502);
         return json(request, { authenticated: true, userId: data.user?.id }, 200, { 'set-cookie': authCookie(request, data.accessToken) });
@@ -70,7 +70,6 @@ export const Route = createFileRoute('/api/auth')({
           if (error || data?.success !== true) {
             console.warn('Password reset email request rejected', {
               statusCode: error?.statusCode,
-              providerCode: error && 'error' in error ? error.error : undefined,
             });
             return json(request, { error: 'تعذّر إرسال رمز الاستعادة حاليًا. حاول مرة أخرى بعد قليل.' }, 502, { 'retry-after': '30' });
           }
