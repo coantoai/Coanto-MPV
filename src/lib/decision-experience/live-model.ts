@@ -59,7 +59,14 @@ function postureFromZone(value: unknown): Exclude<LivePosture, "INSUFFICIENT"> |
 }
 
 function decisionTitle(item: Record<string, unknown>) {
-  return str(item["title"]) || str(item["name"]) || str(item["item"]) || str(item["action"]);
+  return str(item["title"])
+    || str(item["name"])
+    || str(item["item"])
+    || str(item["action"])
+    || str(item["decision"])
+    || str(item["recommendation"])
+    || str(item["nextAction"])
+    || str(item["next_action"]);
 }
 
 function decisionWhy(item: Record<string, unknown>) {
