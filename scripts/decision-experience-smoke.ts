@@ -84,14 +84,16 @@ assert.equal(
   false,
 );
 
-// A live Decision Event is promoted only from a recognized matrix zone with a rationale and direct source URLs.
+// A live Decision Event is promoted only after the server-side decision-source gate.
 const promoted = deriveLiveDecision({
+  metadata: { decisionSourceLinkageChecked: true },
   priorityMatrix: [
     {
       zone: "do-now",
       title: "Protect the current offer",
       reason: "A verified competitor changed the offer while your public position stayed unchanged.",
       sourceUrls: ["https://example.com/offer"],
+      decisionEvidenceStatus: "linked",
       evidenceFor: ["Offer changed on the cited public page."],
       counterEvidence: ["Duration of the change is not yet known."],
       trigger: "Recheck when the competitor offer expires or your inventory constraint changes.",
@@ -108,18 +110,36 @@ assert.ok(answerLiveDecisionQuestion(promoted, "ليش؟").includes("verified co
 assert.ok(answerLiveDecisionQuestion(promoted, "شو ضد القرار؟").includes("Duration"));
 assert.ok(answerLiveDecisionQuestion(promoted, "سؤال غير موجود").includes("لن أملأ الفراغ"));
 
+// Historic/raw model output cannot self-promote even when it contains a valid-looking URL.
+const historicUngated = deriveLiveDecision({
+  priorityMatrix: [{
+    zone: "act",
+    title: "Old recommendation",
+    why: "Old model output contains a reason.",
+    sourceUrls: ["https://example.com/offer"],
+    evidenceFor: ["Old observation"],
+    counterEvidence: ["Old counter case"],
+    trigger: "Old trigger",
+  }],
+});
+assert.equal(historicUngated.posture, "INSUFFICIENT");
+assert.ok(historicUngated.promotionBlockedBy.includes("decision-source linkage gate"));
+
 const blocked = deriveLiveDecision({
+  metadata: { decisionSourceLinkageChecked: true },
   priority_matrix: [
     {
       zone: "test",
       title: "Try a reversible response",
       rationale: "The model sees a potentially material change.",
       sourceUrls: ["javascript:alert(1)"],
+      decisionEvidenceStatus: "unlinked",
     },
   ],
 });
 assert.equal(blocked.posture, "INSUFFICIENT");
 assert.equal(blocked.candidatePosture, "TEST");
+assert.ok(blocked.promotionBlockedBy.includes("verified decision-source linkage"));
 assert.ok(blocked.promotionBlockedBy.includes("decision-linked source URLs"));
 
 // Regression boundary: new evidence reads must scope ownership BEFORE reading shared records.
@@ -174,5 +194,5 @@ assert.equal(
 );
 
 console.log(
-  "PASS: preview decisions, grounded live Decision Event promotion, counter-evidence, abstention, safe links, tenant-read boundary, isolated live route and auth-return contract.",
+  "PASS: preview decisions, server-gated live Decision Event promotion, historic-output blocking, counter-evidence, abstention, safe links, tenant-read boundary, isolated live route and auth-return contract.",
 );
