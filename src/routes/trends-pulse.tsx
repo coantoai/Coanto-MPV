@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
-import CoantoPulseExperience from '@/components/CoantoPulseExperience';
+import CoantoPulseFast from '@/components/CoantoPulseFast';
 
 // @ts-expect-error TanStack file-route type map is generated during build.
 export const Route = createFileRoute('/trends-pulse')({
   head:()=>({meta:[
-    {title:'COANTO — شو صار اليوم وبيهمك فعلًا؟'},
-    {name:'description',content:'كوانتو يراقب الترندات والأخبار والإشارات التي تهم نشاطك ويحولها إلى قرار وفعل.'},
+    {title:'COANTO — Pulse Line'},
+    {name:'description',content:'كوانتو يرصد ما يتحرك الآن ويشرح لماذا يهمك وما الذي تفعله.'},
   ]}),
-  component:CoantoPulseExperience,
+  component:CoantoPulseFast,
 });
