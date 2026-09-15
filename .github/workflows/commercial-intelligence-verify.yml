@@ -1,0 +1,31 @@
+name: Verify Commercial Intelligence
+
+on:
+  push:
+    branches:
+      - feat/coanto-commercial-intelligence-v1
+  pull_request:
+    branches:
+      - feat/coanto-live-e2e-r1-r60
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+  BUN_VERSION: 1.4.2
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun scripts/commercial-intelligence-smoke.ts
+      - run: bun run build
