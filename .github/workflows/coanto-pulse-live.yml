@@ -1,0 +1,30 @@
+name: COANTO Pulse Live Engine
+
+on:
+  push:
+    branches: [trends-pulse-real-v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-pulse:
+    runs-on: ubuntu-latest
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_COANTO_ONE }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install
+      - name: Verify Gemini secret wiring
+        run: |
+          [ -n "$GEMINI_API_KEY" ] || (echo "GEMINI_API_KEY=missing" && exit 1)
+          echo "GEMINI_API_KEY=present"
+      - name: Diagnose Google Search grounding
+        run: bun scripts/gemini-grounding-diagnostic.ts
+      - name: Run real COANTO Pulse discovery with Google Search grounding
+        run: bun scripts/coanto-pulse-live.ts
