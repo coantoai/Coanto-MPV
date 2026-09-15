@@ -17,7 +17,7 @@ function json(request: Request, traceId: string, body: unknown, status = 200) {
 function profileFrom(value: unknown): TrendPulseProfile {
   const data = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const s = (key: string, max = 1200) => typeof data[key] === 'string' ? String(data[key]).trim().slice(0, max) : '';
-  const platforms = Array.isArray(data['platforms']) ? data['platforms'].filter((v): v is string => typeof v === 'string').map((v) => v.slice(0, 60)).slice(0, 6) : [];
+  const platforms = Array.isArray(data['platforms']) ? data['platforms'].filter((v): v is string => typeof v === 'string').map((v) => v.slice(0, 60)).slice(0, 8) : [];
   return {
     businessName: s('businessName', 160),
     storeUrl: s('storeUrl', 2048),
@@ -41,17 +41,25 @@ function trendFrom(value: unknown): TrendSignal | null {
   const text = (key: string, fallback = '') => typeof data[key] === 'string' ? String(data[key]).trim().slice(0, 1800) : fallback;
   const strength = text('signalStrength');
   const state = text('state');
+  const kind = text('kind');
+  const potential = text('contentPotential');
+  const normalizedKind: TrendSignal['kind'] = kind === 'خبر' || kind === 'إشارة مبكرة' || kind === 'موسم' || kind === 'أداة/ميزة' || kind === 'سلوك جمهور' ? kind : 'ترند';
   return {
-    id: text('id', `trend-${Date.now()}`),
-    title: text('title', 'إشارة محتوى'),
+    id: text('id', `signal-${Date.now()}`),
+    title: text('title', 'إشارة مهمة'),
+    kind: normalizedKind,
     hashtag: text('hashtag'),
     platform: text('platform', 'Cross-platform'),
     signalStrength: strength === 'قوية' || strength === 'متوسطة' ? strength : 'أولية',
     freshness: text('freshness', 'حديثة'),
     state: state === 'استخدم الآن' || state === 'تجاهل' ? state : 'راقب',
+    whatHappened: text('whatHappened'),
     whyNow: text('whyNow'),
     businessFit: text('businessFit'),
+    recommendedAction: text('recommendedAction'),
+    contentPotential: potential === 'عالٍ' || potential === 'منخفض' ? potential : 'متوسط',
     contentAngle: text('contentAngle'),
+    triggerToWatch: text('triggerToWatch'),
     saturationRisk: text('saturationRisk'),
     confidenceNote: text('confidenceNote'),
     evidenceSummary: text('evidenceSummary'),
@@ -77,12 +85,12 @@ export const Route = createFileRoute('/api/trends-pulse')({
 
           const { getUserIdFromRequest } = await import('@/lib/auth.server');
           const userId = await getUserIdFromRequest(request);
-          if (!userId) return json(request, traceId, { error: 'سجّل الدخول لتشغيل البحث الحقيقي.', code: 'AUTH_REQUIRED' }, 401);
+          if (!userId) return json(request, traceId, { error: 'سجّل الدخول لتشغيل الرصد الحقيقي.', code: 'AUTH_REQUIRED' }, 401);
 
           const mode = typeof body['mode'] === 'string' ? body['mode'] : 'discover';
           const profile = profileFrom(body['profile']);
           if (!profile.productName && !profile.productDescription && !profile.storeUrl) {
-            return json(request, traceId, { error: 'أضف رابط المنتج أو اسم/وصف المنتج حتى نخصص البحث.' }, 400);
+            return json(request, traceId, { error: 'أضف رابط النشاط/المنتج أو وصفه حتى نخصص الرصد.' }, 400);
           }
 
           if (mode === 'discover') {
@@ -105,7 +113,7 @@ export const Route = createFileRoute('/api/trends-pulse')({
           const message = error instanceof Error ? error.message : 'Unexpected error';
           const providerIssue = /Gemini|GEMINI_API_KEY|timed out|429|quota/i.test(message);
           return json(request, traceId, {
-            error: providerIssue ? 'تعذّر تشغيل محرك البحث والذكاء الآن. تحقق من Gemini/quota وحاول مجددًا.' : 'تعذّر إكمال العملية الآن.',
+            error: providerIssue ? 'تعذّر تشغيل محرك الرصد والذكاء الآن. تحقق من Gemini/quota وحاول مجددًا.' : 'تعذّر إكمال العملية الآن.',
             code: providerIssue ? 'AI_PROVIDER_FAILED' : 'TRENDS_PULSE_FAILED',
             traceId,
           }, providerIssue ? 502 : 500);
