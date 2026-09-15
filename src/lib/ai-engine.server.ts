@@ -184,7 +184,7 @@ function parseJsonObject(text: string) {
   throw new Error('AI returned no valid JSON object.');
 }
 function parseCandidate(text: string) { return validateAiOutput(parseJsonObject(text)); }
-function providerFallbackEnabled() { return /^(1|true|yes)$/i.test(process.env['COANTO_AI_ALLOW_PROVIDER_FALLBACK']?.trim() || ''); }
+function providerFallbackEnabled() {\n  const configured = process.env['COANTO_AI_ALLOW_PROVIDER_FALLBACK']?.trim();\n  // Internal preview must remain resilient when one configured AI provider/model is temporarily unavailable.\n  // Operators can still explicitly disable fallback with 0/false/no.\n  if (!configured) return true;\n  return !/^(0|false|no)$/i.test(configured);\n}
 export async function runResearchAnalysis(prompt: string): Promise<AiRun> {
   const policy = getCostPolicy();
   if (prompt.length > policy.aiPromptMaxChars) throw new Error(`AI prompt exceeds configured budget (${policy.aiPromptMaxChars} characters).`);
