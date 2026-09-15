@@ -127,7 +127,7 @@ async function geminiRequest(parts: JsonRecord[], useSearch: boolean) {
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
-        generationConfig: { temperature: useSearch ? 0.12 : 0.42, maxOutputTokens: 5600 },
+        generationConfig: { temperature: useSearch ? 0.08 : 0.35, maxOutputTokens: 5600 },
       }),
       signal: controller.signal,
     });
@@ -170,13 +170,40 @@ function signalKind(value: string): TrendSignal['kind'] {
   return value === 'خبر' || value === 'إشارة مبكرة' || value === 'موسم' || value === 'أداة/ميزة' || value === 'سلوك جمهور' ? value : 'ترند';
 }
 
-export async function discoverRelevantTrends(profile: TrendPulseProfile): Promise<TrendDiscoveryResult> {
-  const prompt = `أنت محرك TRENDS PULSE: رادار ذكاء يومي عربي لأصحاب المشاريع الصغيرة الذين يعتمدون على السوشيال ميديا في البيع.\n\nملف المستخدم:\n${profileText(profile)}\n\nالهدف الحقيقي:\nالمستخدم لا يريد منصة نشر محتوى فقط. هو يريد بدل أن يفتح TikTok وInstagram وX وYouTube وGoogle والمواقع ويبحث بنفسه، أن يجد هنا فقط ما يستحق انتباهه اليوم.\n\nابحث الآن في الويب العام عبر Google Search عن إشارات حديثة من أو حول TikTok وInstagram/Reels وYouTube/Shorts وX وGoogle والويب والأخبار المحلية. ابحث أيضًا عن المواسم والمناسبات السعودية والخليجية والعودة للمدارس ورمضان والعيد واليوم الوطني ويوم التأسيس والجمعة البيضاء وغيرها عندما يكون توقيتها ذا صلة.\n\nابحث عن ستة أنواع من الإشارات، وليس هاشتاغات فقط:\n1) ترند محتوى أو صيغة منتشرة.\n2) خبر أو تغيير مهم في منصة/سوق/سلوك.\n3) إشارة مبكرة بدأت تظهر قبل أن تصبح مزدحمة.\n4) موسم أو مناسبة قادمة تحتاج تحضيرًا.\n5) أداة/ميزة جديدة قد توفر وقتًا أو تفتح فرصة.\n6) تغيّر أو نمط في سلوك الجمهور أو ما يتحدث عنه.\n\nقواعد الثقة:\n- لا تعرض شيئًا لمجرد أنه مشهور. يجب أن يكون له سبب واضح يخص هذا النشاط أو جمهوره أو طريقة بيعه.\n- لا تخترع نسب نمو أو مشاهدات أو أرقامًا. إذا لا يوجد رقم موثق لا تذكر رقمًا.\n- فرّق بين ما حدث، ولماذا يهم، وما الذي تقترحه.\n- إذا الدليل ضعيف اجعل signalStrength = "أولية" وفسّر ذلك.\n- state فقط: "استخدم الآن" أو "راقب" أو "تجاهل". "استخدم الآن" تعني تحرّك الآن، وليس بالضرورة انشر محتوى.\n- contentPotential فقط: "عالٍ" أو "متوسط" أو "منخفض". المحتوى خيار تنفيذ واحد فقط، وليس الغاية الأساسية.\n- recommendedAction يجب أن يكون فعلًا بسيطًا لصاحب المشروع: جهّز عرض، راقب، اختبر زاوية، حدث البايو، جرّب ميزة، انشر، لا تفعل شيئًا... حسب الإشارة.\n- triggerToWatch يشرح ما الذي إذا حدث يجعل WATCH يتحول إلى تحرّك.\n- لا تقل إن لدينا API مباشر للمنصات. النتائج مبنية على بحث ويب عام ومصادر متاحة عبر Google grounding.\n- العربية بسيطة وعملية جدًا.\n\nأعد JSON فقط:\n{\n  "summary":"أهم ما يستحق الانتباه الآن في سطرين",\n  "trustNote":"ما نعرفه وما لا نعرفه",\n  "trends":[\n    {\n      "title":"عنوان مفهوم",\n      "kind":"ترند|خبر|إشارة مبكرة|موسم|أداة/ميزة|سلوك جمهور",\n      "hashtag":"اختياري",\n      "platform":"TikTok|Instagram Reels|X|YouTube|Google|Web|Cross-platform",\n      "signalStrength":"قوية|متوسطة|أولية",\n      "freshness":"اليوم/آخر 48 ساعة/هذا الأسبوع/قادم خلال...",\n      "state":"استخدم الآن|راقب|تجاهل",\n      "whatHappened":"ماذا حدث فعلًا",\n      "whyNow":"لماذا ظهر الآن",\n      "businessFit":"لماذا يهم هذا النشاط تحديدًا",\n      "recommendedAction":"ماذا يفعل الآن",\n      "contentPotential":"عالٍ|متوسط|منخفض",\n      "contentAngle":"إذا كان مناسبًا للمحتوى، ما الزاوية؛ وإلا اتركها قصيرة",\n      "triggerToWatch":"ما الإشارة التالية التي نراقبها",\n      "saturationRisk":"منخفض|متوسط|مرتفع + تفسير",\n      "confidenceNote":"حدود الثقة",\n      "evidenceSummary":"نوع الأدلة التي دعمت الإشارة"\n    }\n  ]\n}\n\nأعد 5 إلى 9 إشارات فقط، مرتبة حسب أهميتها لهذا المستخدم. إذا لا توجد أدلة كافية أعد عددًا أقل ولا تملأ الفراغ.`;
+async function collectLiveEvidence(profile: TrendPulseProfile) {
+  const now = new Date().toISOString();
+  const prompt = `استخدم Google Search الآن. لا تجب اعتمادًا على ذاكرتك القديمة.\n\nأنت باحث COANTO الذي يجمع أدلة حديثة قبل أي تحليل. التاريخ/الوقت الحالي في النظام: ${now}.\n\nملف المستخدم:\n${profileText(profile)}\n\nابحث في الويب عن أشياء حديثة أو قادمة يمكن أن تهم هذا النشاط تحديدًا. وسّع البحث عند الحاجة إلى TikTok وInstagram/Reels وYouTube/Shorts وX وGoogle والويب والأخبار المحلية والمواسم والمناسبات. لا تفترض وصولًا مباشرًا لبيانات خاصة من المنصات.\n\nمطلوب منك في هذه المرحلة فقط جمع الأدلة، وليس اتخاذ القرار النهائي ولا إخراج JSON. ابحث فعليًا باستخدام Google Search ثم اكتب مذكرة أدلة قصيرة تتضمن 6 إلى 12 ملاحظة كحد أقصى، وكل ملاحظة توضح: ماذا وجد البحث، مدى حداثته، ولماذا قد يكون ذا صلة بهذا المستخدم. إذا لم تجد ما يكفي، قل ذلك بوضوح. لا تخترع أرقام مشاهدات أو نمو أو شعبية.`;
 
-  const { data, text } = await geminiRequest([{ text: prompt }], true);
+  const first = await geminiRequest([{ text: prompt }], true);
+  let grounding = collectGrounding(first.data);
+  let evidenceText = first.text;
+
+  if (!grounding.sources.length || !grounding.queries.length) {
+    const retryPrompt = `استخدم Google Search الآن إلزاميًا قبل الإجابة. ابحث عن أحدث أخبار وترندات ومواسم وتغيّرات مرتبطة بـ ${profile.productName || profile.businessName || 'مشروع صغير'} في ${profile.region || 'السعودية'}، وركّز على ما حدث اليوم أو هذا الأسبوع أو ما سيحدث قريبًا. لا تعطِ تحليلًا عامًا من الذاكرة؛ أريد نتيجة مبنية على بحث ويب حي فقط.`;
+    const retry = await geminiRequest([{ text: retryPrompt }], true);
+    const retryGrounding = collectGrounding(retry.data);
+    if (retryGrounding.sources.length) {
+      grounding = retryGrounding;
+      evidenceText = retry.text;
+    }
+  }
+
+  if (!grounding.sources.length || !grounding.queries.length) {
+    throw new Error('Google Search grounding returned no verifiable web sources.');
+  }
+
+  return { evidenceText, grounding, collectedAt: now };
+}
+
+export async function discoverRelevantTrends(profile: TrendPulseProfile): Promise<TrendDiscoveryResult> {
+  const evidence = await collectLiveEvidence(profile);
+  const sourceList = evidence.grounding.sources.map((source, index) => `${index + 1}. ${source.title}`).join('\n');
+
+  const prompt = `أنت محرك COANTO: رادار ذكاء يومي عربي لأصحاب المشاريع الصغيرة الذين يعتمدون على السوشيال ميديا في البيع.\n\nملف المستخدم:\n${profileText(profile)}\n\nمهم جدًا: مرحلة البحث الحي انتهت قبل هذه الخطوة. لا تبحث من ذاكرتك ولا تضف أخبارًا أو أرقامًا جديدة. استخدم فقط مذكرة الأدلة التي جمعها Google Search أدناه، واربطها بهذا المستخدم.\n\nوقت جمع الأدلة: ${evidence.collectedAt}\n\nمذكرة الأدلة الحية:\n${evidence.evidenceText}\n\nعناوين المصادر التي استُخدمت في البحث:\n${sourceList}\n\nالهدف الحقيقي:\nالمستخدم لا يريد منصة نشر محتوى فقط. هو يريد بدل أن يفتح التطبيقات والمواقع ويبحث بنفسه، أن يجد هنا فقط ما يستحق انتباهه الآن، ولماذا، وما الذي يفعله.\n\nصنّف الإشارات الممكنة ضمن: ترند، خبر، إشارة مبكرة، موسم، أداة/ميزة، سلوك جمهور. لا تجبر وجود كل الأنواع إذا الأدلة لا تدعمها.\n\nقواعد الثقة:\n- لا تعرض شيئًا لمجرد أنه مشهور؛ يجب أن يكون له سبب واضح يخص النشاط أو جمهوره أو طريقة بيعه.\n- لا تخترع نسب نمو أو مشاهدات أو أرقامًا غير موجودة في مذكرة الأدلة.\n- فرّق بين ما حدث، ولماذا يهم، وما الذي تقترحه.\n- إذا الدليل ضعيف اجعل signalStrength = "أولية" وفسّر ذلك.\n- state فقط: "استخدم الآن" أو "راقب" أو "تجاهل". "استخدم الآن" يعني تحرّك الآن وليس بالضرورة انشر محتوى.\n- contentPotential فقط: "عالٍ" أو "متوسط" أو "منخفض". المحتوى خيار تنفيذ واحد وليس الغاية الأساسية.\n- recommendedAction يجب أن يكون فعلًا بسيطًا قابلًا للتنفيذ.\n- triggerToWatch يشرح ما الذي إذا حدث يجعل المراقبة تتحول إلى تحرّك.\n- العربية بسيطة وعملية جدًا.\n\nأعد JSON فقط بهذا الشكل:\n{\n  "summary":"أهم ما يستحق الانتباه الآن في سطرين",\n  "trustNote":"ما نعرفه وما لا نعرفه",\n  "trends":[\n    {\n      "title":"عنوان مفهوم",\n      "kind":"ترند|خبر|إشارة مبكرة|موسم|أداة/ميزة|سلوك جمهور",\n      "hashtag":"اختياري",\n      "platform":"TikTok|Instagram Reels|X|YouTube|Google|Web|Cross-platform",\n      "signalStrength":"قوية|متوسطة|أولية",\n      "freshness":"اليوم/آخر 48 ساعة/هذا الأسبوع/قادم خلال...",\n      "state":"استخدم الآن|راقب|تجاهل",\n      "whatHappened":"ماذا حدث فعلًا",\n      "whyNow":"لماذا ظهر الآن",\n      "businessFit":"لماذا يهم هذا النشاط تحديدًا",\n      "recommendedAction":"ماذا يفعل الآن",\n      "contentPotential":"عالٍ|متوسط|منخفض",\n      "contentAngle":"إذا كان مناسبًا للمحتوى، ما الزاوية",\n      "triggerToWatch":"ما الإشارة التالية التي نراقبها",\n      "saturationRisk":"منخفض|متوسط|مرتفع + تفسير",\n      "confidenceNote":"حدود الثقة",\n      "evidenceSummary":"أي نوع من الأدلة الحية دعمه"\n    }\n  ]\n}\n\nأعد 3 إلى 8 إشارات فقط مرتبة حسب أهميتها لهذا المستخدم. إذا الأدلة لا تكفي، أعد عددًا أقل ولا تملأ الفراغ.`;
+
+  const { text } = await geminiRequest([{ text: prompt }], false);
   const parsed = parseJsonObject(text);
-  const grounding = collectGrounding(data);
-  const trends = arr(parsed['trends']).slice(0, 9).map((value, index): TrendSignal => {
+  const trends = arr(parsed['trends']).slice(0, 8).map((value, index): TrendSignal => {
     const item = record(value);
     const strength = str(item['signalStrength']);
     const state = str(item['state']);
@@ -190,26 +217,28 @@ export async function discoverRelevantTrends(profile: TrendPulseProfile): Promis
       signalStrength: strength === 'قوية' || strength === 'متوسطة' ? strength : 'أولية',
       freshness: str(item['freshness'], 'حديثة'),
       state: state === 'استخدم الآن' || state === 'تجاهل' ? state : 'راقب',
-      whatHappened: str(item['whatHappened'], 'ظهرت إشارة حديثة تستحق الفحص.'),
-      whyNow: str(item['whyNow'], 'التوقيت مرتبط بحركة حديثة في السوق أو الجمهور.'),
+      whatHappened: str(item['whatHappened'], 'ظهرت إشارة حديثة في البحث تستحق الفحص.'),
+      whyNow: str(item['whyNow'], 'التوقيت مرتبط بما ظهر في البحث الحي.'),
       businessFit: str(item['businessFit'], 'الملاءمة تحتاج مراجعة بحسب نشاطك.'),
       recommendedAction: str(item['recommendedAction'], 'راقب الإشارة قبل اتخاذ خطوة.'),
       contentPotential: potential === 'عالٍ' || potential === 'منخفض' ? potential : 'متوسط',
       contentAngle: str(item['contentAngle']),
       triggerToWatch: str(item['triggerToWatch'], 'راقب تكرار الإشارة أو انتقالها لمنصات أخرى.'),
       saturationRisk: str(item['saturationRisk'], 'غير محسوم'),
-      confidenceNote: str(item['confidenceNote'], 'الثقة مرتبطة بقوة الأدلة العامة المتاحة.'),
+      confidenceNote: str(item['confidenceNote'], 'الثقة مرتبطة بقوة الأدلة الحية المتاحة.'),
       evidenceSummary: str(item['evidenceSummary']),
     };
   });
 
+  if (!trends.length) throw new Error('Grounded search returned no relevant COANTO signals.');
+
   return {
     generatedAt: new Date().toISOString(),
-    summary: str(parsed['summary'], 'تمت مراجعة ما يتحرك الآن وربطه بملف نشاطك.'),
+    summary: str(parsed['summary'], 'تمت مراجعة البحث الحي وربطه بملف نشاطك.'),
     trends,
-    sources: grounding.sources,
-    searchQueries: grounding.queries,
-    trustNote: str(parsed['trustNote'], 'النتائج مبنية على بحث ويب عام ومصادر متاحة وليست وصولًا مباشرًا لبيانات المنصات الخاصة.'),
+    sources: evidence.grounding.sources,
+    searchQueries: evidence.grounding.queries,
+    trustNote: str(parsed['trustNote'], 'هذه النتائج مبنية على بحث ويب حي ومصادر ظاهرة، وليست وصولًا مباشرًا لبيانات المنصات الخاصة.'),
   };
 }
 
