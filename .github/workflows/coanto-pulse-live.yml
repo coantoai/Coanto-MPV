@@ -24,5 +24,7 @@ jobs:
         run: |
           [ -n "$GEMINI_API_KEY" ] || (echo "GEMINI_API_KEY=missing" && exit 1)
           echo "GEMINI_API_KEY=present"
+      - name: Diagnose Google Search grounding
+        run: bun scripts/gemini-grounding-diagnostic.ts
       - name: Run real COANTO Pulse discovery with Google Search grounding
         run: bun scripts/coanto-pulse-live.ts
