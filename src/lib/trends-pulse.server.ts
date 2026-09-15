@@ -17,14 +17,19 @@ export type TrendPulseProfile = {
 export type TrendSignal = {
   id: string;
   title: string;
+  kind: 'ترند' | 'خبر' | 'إشارة مبكرة' | 'موسم' | 'أداة/ميزة' | 'سلوك جمهور';
   hashtag?: string;
   platform: string;
   signalStrength: 'قوية' | 'متوسطة' | 'أولية';
   freshness: string;
   state: 'استخدم الآن' | 'راقب' | 'تجاهل';
+  whatHappened: string;
   whyNow: string;
   businessFit: string;
+  recommendedAction: string;
+  contentPotential: 'عالٍ' | 'متوسط' | 'منخفض';
   contentAngle: string;
+  triggerToWatch: string;
   saturationRisk: string;
   confidenceNote: string;
   evidenceSummary?: string;
@@ -106,7 +111,7 @@ function collectGrounding(data: JsonRecord) {
       sources.set(url, { title: str(web['title'], new URL(url).hostname), url });
     }
   }
-  return { sources: [...sources.values()].slice(0, 16), queries: queries.slice(0, 12) };
+  return { sources: [...sources.values()].slice(0, 20), queries: queries.slice(0, 16) };
 }
 
 async function geminiRequest(parts: JsonRecord[], useSearch: boolean) {
@@ -122,7 +127,7 @@ async function geminiRequest(parts: JsonRecord[], useSearch: boolean) {
       body: JSON.stringify({
         contents: [{ role: 'user', parts }],
         ...(useSearch ? { tools: [{ google_search: {} }] } : {}),
-        generationConfig: { temperature: useSearch ? 0.15 : 0.45, maxOutputTokens: 5000 },
+        generationConfig: { temperature: useSearch ? 0.12 : 0.42, maxOutputTokens: 5600 },
       }),
       signal: controller.signal,
     });
@@ -157,42 +162,54 @@ function profileText(profile: TrendPulseProfile) {
     `النبرة: ${profile.tone || 'ودّي وواضح'}`,
     `الهدف: ${profile.objective || 'بيع'}`,
     `محظورات/قيود: ${profile.prohibitedClaims || 'لا توجد قيود إضافية'}`,
-    `المنصات: ${(profile.platforms?.length ? profile.platforms : ['TikTok', 'Instagram Reels', 'X early signals']).join(', ')}`,
+    `مصادر الاهتمام: ${(profile.platforms?.length ? profile.platforms : ['TikTok', 'Instagram Reels', 'X', 'YouTube', 'Google/Web']).join(', ')}`,
   ].join('\n');
 }
 
+function signalKind(value: string): TrendSignal['kind'] {
+  return value === 'خبر' || value === 'إشارة مبكرة' || value === 'موسم' || value === 'أداة/ميزة' || value === 'سلوك جمهور' ? value : 'ترند';
+}
+
 export async function discoverRelevantTrends(profile: TrendPulseProfile): Promise<TrendDiscoveryResult> {
-  const prompt = `أنت محرك Trend Intelligence عربي مخصص لأصحاب المشاريع الصغيرة الذين يبيعون منتجًا ماديًا على السوشيال ميديا.\n\nملف النشاط:\n${profileText(profile)}\n\nالمهمة:\nابحث الآن في الويب العام باستخدام Google Search عن إشارات حديثة وذات صلة بهذا النشاط. ركّز على TikTok وInstagram/Reels كمنصات نشر، واستخدم X فقط كمصدر early signal، وYouTube Shorts كمصدر ثانوي. ابحث أيضًا عن المواسم والمناسبات المحلية السعودية والخليجية عندما تكون ذات صلة.\n\nقواعد صارمة:\n- لا تعرض ترندًا فقط لأنه مشهور؛ يجب أن تشرح لماذا يناسب هذا النشاط والمنتج والجمهور.\n- لا تخترع نسب نمو أو مشاهدات أو أرقامًا غير موجودة في دليل واضح.\n- إذا كانت الأدلة ضعيفة، signalStrength يجب أن تكون "أولية" وconfidenceNote يشرح ذلك.\n- state يجب أن تكون فقط: "استخدم الآن" أو "راقب" أو "تجاهل".\n- signalStrength يجب أن تكون فقط: "قوية" أو "متوسطة" أو "أولية".\n- الأولوية لمحتوى يمكن تنفيذه خلال 24-72 ساعة.\n- لا تعطِ ادعاءات طبية أو مالية أو وعود نتائج غير مثبتة.\n- العربية بسيطة جدًا ومناسبة لصاحب متجر، بدون مصطلحات تحليلية معقدة.\n- لا تقل إن لدينا وصول API مباشر إلى TikTok أو Instagram.\n\nأعد JSON فقط بهذا الشكل:\n{\n  "summary":"خلاصة قصيرة من سطرين",\n  "trustNote":"ما الذي نعرفه وما الذي لا نعرفه",\n  "trends":[\n    {\n      "title":"...",\n      "hashtag":"... أو فارغ",\n      "platform":"TikTok|Instagram Reels|X|YouTube Shorts|Cross-platform",\n      "signalStrength":"قوية|متوسطة|أولية",\n      "freshness":"مثال: اليوم / آخر 48 ساعة / هذا الأسبوع",\n      "state":"استخدم الآن|راقب|تجاهل",\n      "whyNow":"...",\n      "businessFit":"لماذا يهم هذا المنتج تحديدًا",\n      "contentAngle":"زاوية تنفيذية واحدة",\n      "saturationRisk":"منخفض|متوسط|مرتفع + تفسير قصير",\n      "confidenceNote":"...",\n      "evidenceSummary":"ما نوع الأدلة التي دعمت الإشارة"\n    }\n  ]\n}\n\nأعد 4 إلى 8 إشارات فقط. إذا لم تجد أدلة كافية، أعد عددًا أقل بدل اختراع نتائج.`;
+  const prompt = `أنت محرك TRENDS PULSE: رادار ذكاء يومي عربي لأصحاب المشاريع الصغيرة الذين يعتمدون على السوشيال ميديا في البيع.\n\nملف المستخدم:\n${profileText(profile)}\n\nالهدف الحقيقي:\nالمستخدم لا يريد منصة نشر محتوى فقط. هو يريد بدل أن يفتح TikTok وInstagram وX وYouTube وGoogle والمواقع ويبحث بنفسه، أن يجد هنا فقط ما يستحق انتباهه اليوم.\n\nابحث الآن في الويب العام عبر Google Search عن إشارات حديثة من أو حول TikTok وInstagram/Reels وYouTube/Shorts وX وGoogle والويب والأخبار المحلية. ابحث أيضًا عن المواسم والمناسبات السعودية والخليجية والعودة للمدارس ورمضان والعيد واليوم الوطني ويوم التأسيس والجمعة البيضاء وغيرها عندما يكون توقيتها ذا صلة.\n\nابحث عن ستة أنواع من الإشارات، وليس هاشتاغات فقط:\n1) ترند محتوى أو صيغة منتشرة.\n2) خبر أو تغيير مهم في منصة/سوق/سلوك.\n3) إشارة مبكرة بدأت تظهر قبل أن تصبح مزدحمة.\n4) موسم أو مناسبة قادمة تحتاج تحضيرًا.\n5) أداة/ميزة جديدة قد توفر وقتًا أو تفتح فرصة.\n6) تغيّر أو نمط في سلوك الجمهور أو ما يتحدث عنه.\n\nقواعد الثقة:\n- لا تعرض شيئًا لمجرد أنه مشهور. يجب أن يكون له سبب واضح يخص هذا النشاط أو جمهوره أو طريقة بيعه.\n- لا تخترع نسب نمو أو مشاهدات أو أرقامًا. إذا لا يوجد رقم موثق لا تذكر رقمًا.\n- فرّق بين ما حدث، ولماذا يهم، وما الذي تقترحه.\n- إذا الدليل ضعيف اجعل signalStrength = "أولية" وفسّر ذلك.\n- state فقط: "استخدم الآن" أو "راقب" أو "تجاهل". "استخدم الآن" تعني تحرّك الآن، وليس بالضرورة انشر محتوى.\n- contentPotential فقط: "عالٍ" أو "متوسط" أو "منخفض". المحتوى خيار تنفيذ واحد فقط، وليس الغاية الأساسية.\n- recommendedAction يجب أن يكون فعلًا بسيطًا لصاحب المشروع: جهّز عرض، راقب، اختبر زاوية، حدث البايو، جرّب ميزة، انشر، لا تفعل شيئًا... حسب الإشارة.\n- triggerToWatch يشرح ما الذي إذا حدث يجعل WATCH يتحول إلى تحرّك.\n- لا تقل إن لدينا API مباشر للمنصات. النتائج مبنية على بحث ويب عام ومصادر متاحة عبر Google grounding.\n- العربية بسيطة وعملية جدًا.\n\nأعد JSON فقط:\n{\n  "summary":"أهم ما يستحق الانتباه الآن في سطرين",\n  "trustNote":"ما نعرفه وما لا نعرفه",\n  "trends":[\n    {\n      "title":"عنوان مفهوم",\n      "kind":"ترند|خبر|إشارة مبكرة|موسم|أداة/ميزة|سلوك جمهور",\n      "hashtag":"اختياري",\n      "platform":"TikTok|Instagram Reels|X|YouTube|Google|Web|Cross-platform",\n      "signalStrength":"قوية|متوسطة|أولية",\n      "freshness":"اليوم/آخر 48 ساعة/هذا الأسبوع/قادم خلال...",\n      "state":"استخدم الآن|راقب|تجاهل",\n      "whatHappened":"ماذا حدث فعلًا",\n      "whyNow":"لماذا ظهر الآن",\n      "businessFit":"لماذا يهم هذا النشاط تحديدًا",\n      "recommendedAction":"ماذا يفعل الآن",\n      "contentPotential":"عالٍ|متوسط|منخفض",\n      "contentAngle":"إذا كان مناسبًا للمحتوى، ما الزاوية؛ وإلا اتركها قصيرة",\n      "triggerToWatch":"ما الإشارة التالية التي نراقبها",\n      "saturationRisk":"منخفض|متوسط|مرتفع + تفسير",\n      "confidenceNote":"حدود الثقة",\n      "evidenceSummary":"نوع الأدلة التي دعمت الإشارة"\n    }\n  ]\n}\n\nأعد 5 إلى 9 إشارات فقط، مرتبة حسب أهميتها لهذا المستخدم. إذا لا توجد أدلة كافية أعد عددًا أقل ولا تملأ الفراغ.`;
+
   const { data, text } = await geminiRequest([{ text: prompt }], true);
   const parsed = parseJsonObject(text);
   const grounding = collectGrounding(data);
-  const trends = arr(parsed['trends']).slice(0, 8).map((value, index): TrendSignal => {
+  const trends = arr(parsed['trends']).slice(0, 9).map((value, index): TrendSignal => {
     const item = record(value);
     const strength = str(item['signalStrength']);
     const state = str(item['state']);
+    const potential = str(item['contentPotential']);
     return {
-      id: `trend-${Date.now()}-${index}`,
+      id: `signal-${Date.now()}-${index}`,
       title: str(item['title'], `إشارة ${index + 1}`),
+      kind: signalKind(str(item['kind'])),
       hashtag: str(item['hashtag']),
       platform: str(item['platform'], 'Cross-platform'),
       signalStrength: strength === 'قوية' || strength === 'متوسطة' ? strength : 'أولية',
       freshness: str(item['freshness'], 'حديثة'),
       state: state === 'استخدم الآن' || state === 'تجاهل' ? state : 'راقب',
-      whyNow: str(item['whyNow'], 'توجد إشارة حديثة تستحق المراجعة.'),
-      businessFit: str(item['businessFit'], 'الملاءمة تحتاج اختبارًا عمليًا.'),
-      contentAngle: str(item['contentAngle'], 'قدّم المنتج ضمن سياق الإشارة بدل مطاردة الترند حرفيًا.'),
+      whatHappened: str(item['whatHappened'], 'ظهرت إشارة حديثة تستحق الفحص.'),
+      whyNow: str(item['whyNow'], 'التوقيت مرتبط بحركة حديثة في السوق أو الجمهور.'),
+      businessFit: str(item['businessFit'], 'الملاءمة تحتاج مراجعة بحسب نشاطك.'),
+      recommendedAction: str(item['recommendedAction'], 'راقب الإشارة قبل اتخاذ خطوة.'),
+      contentPotential: potential === 'عالٍ' || potential === 'منخفض' ? potential : 'متوسط',
+      contentAngle: str(item['contentAngle']),
+      triggerToWatch: str(item['triggerToWatch'], 'راقب تكرار الإشارة أو انتقالها لمنصات أخرى.'),
       saturationRisk: str(item['saturationRisk'], 'غير محسوم'),
       confidenceNote: str(item['confidenceNote'], 'الثقة مرتبطة بقوة الأدلة العامة المتاحة.'),
       evidenceSummary: str(item['evidenceSummary']),
     };
   });
+
   return {
     generatedAt: new Date().toISOString(),
-    summary: str(parsed['summary'], 'تمت مراجعة الإشارات الحديثة وربطها بملف نشاطك.'),
+    summary: str(parsed['summary'], 'تمت مراجعة ما يتحرك الآن وربطه بملف نشاطك.'),
     trends,
     sources: grounding.sources,
     searchQueries: grounding.queries,
-    trustNote: str(parsed['trustNote'], 'النتائج مبنية على بحث ويب عام وليست وصولًا مباشرًا لبيانات المنصات.'),
+    trustNote: str(parsed['trustNote'], 'النتائج مبنية على بحث ويب عام ومصادر متاحة وليست وصولًا مباشرًا لبيانات المنصات الخاصة.'),
   };
 }
 
@@ -210,7 +227,7 @@ export async function generateTrendScript(input: {
   format?: string;
   imageDataUrl?: string;
 }): Promise<ScriptResult> {
-  const prompt = `أنت كاتب محتوى أداء عربي لمتجر صغير.\n\nملف النشاط:\n${profileText(input.profile)}\n\nالإشارة المختارة:\n${JSON.stringify(input.trend)}\n\nصيغة المحتوى: ${input.format || 'TikTok / Reels'}\n\nاكتب محتوى قابل للتصوير اليوم، لا تنظير. اربط المنتج بالترند طبيعيًا بدون حشر أو تقليد أعمى. إذا كانت الصورة مرفقة، استخدم ما يظهر فيها فقط ولا تخترع خصائص غير ظاهرة.\n\nقواعد:\n- 5 هوكات مختلفة، قصيرة وقوية بدون clickbait كاذب.\n- سكربت 25-35 ثانية، بجمل قصيرة.\n- CTA واحد مناسب لهدف النشاط.\n- Caption جاهز.\n- 5 إلى 8 هاشتاغات فقط.\n- shotPlan بسيط يستطيع صاحب متجر تصويره بالجوال.\n- 3 ردود جاهزة لتعليقات محتملة.\n- لا وعود مالية/طبية أو ادعاءات منتج غير موجودة في الملف.\n- اللهجة المطلوبة: ${input.profile.dialect || 'سعودي'}.\n\nأعد JSON فقط:\n{"hook":"أفضل هوك","hooks":["..."],"body":["..."],"cta":"...","caption":"...","hashtags":["#..."],"shotPlan":["..."],"commentReplies":["..."],"duration":"25-35 ثانية","safetyNote":"..."}`;
+  const prompt = `أنت كاتب محتوى أداء عربي لمشروع صغير.\n\nملف النشاط:\n${profileText(input.profile)}\n\nالإشارة المختارة:\n${JSON.stringify(input.trend)}\n\nصيغة المحتوى: ${input.format || 'TikTok / Reels'}\n\nالمستخدم اختار بنفسه تحويل هذه الإشارة إلى محتوى. اكتب شيئًا قابلًا للتصوير اليوم، لا تنظير. اربط المنتج بالإشارة طبيعيًا بدون حشر أو تقليد أعمى. إذا كانت الصورة مرفقة استخدم فقط ما يظهر فيها ولا تخترع خصائص.\n\nقواعد:\n- 5 هوكات مختلفة، قصيرة وقوية بدون clickbait كاذب.\n- سكربت 25-35 ثانية، بجمل قصيرة.\n- CTA واحد مناسب لهدف النشاط.\n- Caption جاهز.\n- 5 إلى 8 هاشتاغات فقط.\n- shotPlan بسيط يستطيع صاحب مشروع تصويره بالجوال.\n- 3 ردود جاهزة لتعليقات محتملة.\n- لا وعود مالية/طبية أو ادعاءات منتج غير موجودة في الملف.\n- اللهجة المطلوبة: ${input.profile.dialect || 'سعودي'}.\n\nأعد JSON فقط:\n{"hook":"أفضل هوك","hooks":["..."],"body":["..."],"cta":"...","caption":"...","hashtags":["#..."],"shotPlan":["..."],"commentReplies":["..."],"duration":"25-35 ثانية","safetyNote":"..."}`;
   const parts: JsonRecord[] = [{ text: prompt }];
   const imagePart = imagePartFromDataUrl(input.imageDataUrl);
   if (imagePart) parts.push(imagePart);
