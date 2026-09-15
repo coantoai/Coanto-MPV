@@ -1,6 +1,7 @@
 import { validateAiOutput } from '../src/lib/ai-output.server';
 import { enforceEvidence } from '../src/lib/trust.server';
 import { buildPrompt, type SiteSnapshot } from '../src/lib/analyze.server';
+import { CUSTOMER_COMPANY_ANALYSIS_RULES } from '../src/lib/business-context.server';
 import { deriveLiveDecision } from '../src/lib/decision-experience/live-model';
 
 const valid = validateAiOutput({
@@ -40,6 +41,38 @@ const pulse = valid.decisionPulse as Record<string, Record<string, unknown>>;
 if (pulse?.threat?.title !== 'Competitor offer pressure' || pulse?.opportunity?.title !== 'Positioning gap' || pulse?.action?.title !== 'Test the clearest response today.') throw new Error('Decision pulse was not derived from validated AI output.');
 const snapshot = valid.snapshot as Record<string, unknown>;
 if (snapshot?.competitorCount !== 1 || snapshot?.meaningfulSignals !== 1) throw new Error('Analysis snapshot counts were not derived correctly.');
+
+for (const required of ['CUSTOMER COMPANY COMMERCIAL ANALYSIS ONLY', 'Never discuss COANTO itself', 'pricing, promotions, assortment', 'If the public evidence does not support a useful commercial conclusion']) {
+  if (!CUSTOMER_COMPANY_ANALYSIS_RULES.includes(required)) throw new Error(`Commercial analysis rules missing ${required}.`);
+}
+
+const metaFiltered = validateAiOutput({
+  competitors: [{ name: 'Retail Rival', url: 'https://retail.example', why: 'Serves the same market.' }],
+  signals: [
+    { title: 'Observed promotion', description: 'Retail Rival is showing a public promotion.', competitor: 'Retail Rival' },
+    { title: 'Internal product research', description: 'تحليل هيكلية المواقع الإلكترونية للمنافسين لتحديد نقاط البيانات القابلة للاستخراج.', competitor: 'Retail Rival' },
+  ],
+  priority_matrix: [
+    { title: 'Watch promotion', zone: 'monitor', why: 'A public competitor promotion is visible.', sourceUrls: [], evidenceFor: [], counterEvidence: [], trigger: 'Promotion changes', nextAction: 'Watch the offer.' },
+    { title: 'حدد المتطلبات التقنية لأداة تحليل المنافسين', zone: 'test', why: 'Build the tool.', sourceUrls: [], evidenceFor: [], counterEvidence: [], trigger: 'Tool ready', nextAction: 'Build scraper.' },
+  ],
+  threats: [{ title: 'Promotion pressure', description: 'Competitor promotion may affect positioning.' }],
+  opportunities: [{ title: 'هل سيدفع التجار؟', description: 'مدى تقبل أصحاب المتاجر الإلكترونية للدفع مقابل خدمات تحليل المنافسين.' }],
+  scenarios: [],
+  action_plan: [
+    { title: 'Review competitor offer', timing: 'today', why: 'Commercial move.' },
+    { title: 'اختبار استعداد أصحاب المتاجر للدفع', timing: 'week', why: 'PMF research.' },
+  ],
+  trust: [],
+  unknowns: ['Competitor promotion duration is unknown.', 'القيود القانونية والتقنية المتعلقة باستخراج البيانات من مواقع المنافسين.'],
+  summary: 'Commercial summary.',
+  next_action: 'Review competitor offer.',
+});
+if ((metaFiltered.signals as Array<Record<string, unknown>>).length !== 1) throw new Error('Internal product research leaked into customer signals.');
+if ((metaFiltered.priorityMatrix as Array<Record<string, unknown>>).length !== 1) throw new Error('Internal product research leaked into customer decisions.');
+if ((metaFiltered.opportunities as Array<Record<string, unknown>>).length !== 0) throw new Error('Willingness-to-pay research leaked into customer opportunities.');
+if ((metaFiltered.actions as Array<Record<string, unknown>>).length !== 1) throw new Error('Internal validation task leaked into customer actions.');
+if ((metaFiltered.unknowns as string[]).length !== 1) throw new Error('Internal scraping constraint leaked into customer unknowns.');
 
 const baseline: SiteSnapshot = {
   url: 'https://target.example/', title: 'Target', description: 'Target store', h1: ['Target'], h2: [], text: 'Target products', sourceType: 'direct-site', evidence: ['Direct site observation: https://target.example/'],
