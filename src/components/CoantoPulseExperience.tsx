@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BellRing, Bookmark, BrainCircuit, CalendarDays, CheckCircle2, Copy, ExternalLink,
+  BellRing, Bookmark, BrainCircuit, CalendarDays, Copy, ExternalLink,
   Eye, Image as ImageIcon, Layers3, Loader2, Newspaper, Radar, Search, ShieldCheck,
   Target, Upload, Users, WandSparkles, Wrench, X, Zap,
 } from 'lucide-react';
@@ -151,7 +151,7 @@ export default function CoantoPulseExperience(){
     setSelected(trend);setGenerating(true);setError('');setAuth(false);setScript(null);setStudioOpen(true);
     try{
       const body:Record<string,unknown>={mode:'script',profile,trend,format:trend.platform.includes('Instagram')?'Instagram Reels':'TikTok / Reels'};
-      if(image)body.imageDataUrl=image;
+      if(image)body['imageDataUrl']=image;
       const d=await callApi(body);setScript(d.result as Script);
     }catch(e){const x=e as Error&{code?:string};setError(x.message);setAuth(x.code==='AUTH_REQUIRED');setStudioOpen(false)}
     finally{setGenerating(false)}
