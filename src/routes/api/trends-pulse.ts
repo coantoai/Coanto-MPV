@@ -94,8 +94,8 @@ export const Route = createFileRoute('/api/trends-pulse')({
             const trend = trendFrom(body['trend']);
             if (!trend) return json(request, traceId, { error: 'اختر إشارة أولًا.' }, 400);
             const format = typeof body['format'] === 'string' ? body['format'].slice(0, 80) : 'TikTok / Reels';
-            const imageDataUrl = typeof body['imageDataUrl'] === 'string' ? body['imageDataUrl'] : undefined;
-            const result = await generateTrendScript({ profile, trend, format, imageDataUrl });
+            const imageDataUrl = typeof body['imageDataUrl'] === 'string' ? body['imageDataUrl'] : '';
+            const result = await generateTrendScript({ profile, trend, format, ...(imageDataUrl ? { imageDataUrl } : {}) });
             return json(request, traceId, { ok: true, mode, result });
           }
 
