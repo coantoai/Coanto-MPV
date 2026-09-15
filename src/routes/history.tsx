@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { ArrowUpLeft, Clock3, Eye, History, Loader2, ShieldCheck, Target } from "lucide-react";
 import { listAnalyses, getAnalysis, type HistoryItem } from "@/lib/history.functions";
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute("/history")({
   component: HistoryPage,
   head: () => ({

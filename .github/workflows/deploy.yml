@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, dashboard, alerts-reports, apify, security, performance-cost, billing, production-qa, launch-readiness]
+        check: [typecheck, lint, smoke, architecture, onboarding, competitor-discovery, evidence, evidence-collector, claim, evidence-graph, research-proof, ai-contract, build, monitoring-live, monitoring-engine, intelligence-engine, decision-engine, decision-experience, dashboard, alerts-reports, apify, security, performance-cost, billing, production-qa, launch-readiness]
     steps:
       - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
@@ -46,6 +46,7 @@ jobs:
             monitoring-engine) bun run test:monitoring-engine ;;
             intelligence-engine) bun run test:intelligence-engine ;;
             decision-engine) bun run test:decision-engine ;;
+            decision-experience) bun run test:decision-experience ;;
             dashboard) bun run test:dashboard ;;
             alerts-reports) bun run test:alerts-reports ;;
             apify) bun run test:apify ;;

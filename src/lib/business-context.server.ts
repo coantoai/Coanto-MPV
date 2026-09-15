@@ -1,5 +1,6 @@
 import { getDatabase } from './database.server';
 import { validateTargetUrl } from './analyze.server';
+import { DECISION_SOURCE_URL_RULE } from './decision-source-contract';
 
 export const BUSINESS_MODELS = ['ecommerce','saas','services','marketplace','retail','other'] as const;
 export const COMPANY_STAGES = ['prelaunch','early','growing','established'] as const;
@@ -135,6 +136,20 @@ export async function saveBusinessContext(userId: string, input: unknown): Promi
   return mapRow(data);
 }
 
+export const CUSTOMER_COMPANY_ANALYSIS_RULES = [
+  'HARD PRODUCT MODE: CUSTOMER COMPANY COMMERCIAL ANALYSIS ONLY.',
+  'The sole subject is the target business, its real competitors, its customers, and its commercial market environment.',
+  'Never discuss COANTO itself, product-market fit, willingness to pay for a competitor-analysis product, pilot design, subscription demand, building an analysis tool, scraping feasibility, data-extraction architecture, or technical requirements for COANTO.',
+  'Never convert missing commercial evidence into research questions about the COANTO product. Unknowns must be missing facts about the target company, a verified competitor, the customer, or the market that could change a business decision.',
+  'Prioritize commercially useful dimensions when evidence exists: pricing, promotions, assortment, product launches/removals, availability/stock signals, private label, delivery/fulfillment, positioning/value proposition, channel/geographic expansion, digital visibility/demand, customer/review signals, and concrete competitor moves.',
+  'First identify what is actually observed or changed. Then explain why it matters specifically to the target business. Only then recommend ACT, TEST, WATCH, or IGNORE.',
+  'A threat, opportunity, signal, action, scenario, or unknown is allowed only if a reasonable owner or executive of the target business could use it to make or revisit a commercial decision.',
+  'Prefer a small number of material, specific findings over generic advice. Name the competitor, category/product, market, offer, or observable condition whenever the evidence supports it.',
+  'If the public evidence does not support a useful commercial conclusion, say insufficient evidence. Do not fill the screen with generic business advice.',
+  'Do not infer sales, revenue, margin, inventory, true market share, basket behavior, or financial impact from a public website unless those facts are explicitly evidenced or owner-provided.',
+  'Do not present legal or technical data-collection constraints as customer opportunities, threats, next actions, or unknowns unless the target company itself faces that documented business issue.',
+].join('\n');
+
 export function businessContextForPrompt(context: BusinessContext | null): string {
   if (!context) return '';
   return [
@@ -142,5 +157,8 @@ export function businessContextForPrompt(context: BusinessContext | null): strin
     `Primary market: ${context.primaryMarket}`, `Target markets: ${context.targetMarkets.join(', ') || context.primaryMarket}`, `Target customer: ${context.targetCustomer}`,
     `Value proposition: ${context.valueProposition}`, `Products/services: ${context.productsServices.join(', ')}`, `Competitive goals: ${context.competitiveGoals.join(', ')}`,
     `Known competitors supplied by user (leads only, not verified evidence): ${context.knownCompetitors.join(', ') || 'none'}`,
+    'END OWNER-PROVIDED BUSINESS CONTEXT.',
+    CUSTOMER_COMPANY_ANALYSIS_RULES,
+    DECISION_SOURCE_URL_RULE,
   ].join('\n');
 }

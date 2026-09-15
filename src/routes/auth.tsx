@@ -3,6 +3,37 @@ import { type FormEvent, useEffect, useState } from "react";
 import { clientAuth } from "@/lib/auth-client";
 
 type Mode = 'signin' | 'signup' | 'verify' | 'forgot' | 'reset';
+const RETURN_TO_KEY = 'coanto:return-to';
+
+function safeReturnTo(value: string | null | undefined) {
+  const candidate = value?.trim() ?? '';
+  if (!candidate.startsWith('/') || candidate.startsWith('//') || candidate.includes('\\')) return '';
+  return candidate;
+}
+
+function requestedReturnTo() {
+  if (typeof window === 'undefined') return '';
+  return safeReturnTo(new URLSearchParams(window.location.search).get('next'));
+}
+
+function rememberedReturnTo() {
+  if (typeof window === 'undefined') return '';
+  return safeReturnTo(window.sessionStorage.getItem(RETURN_TO_KEY));
+}
+
+function rememberReturnTo(value: string) {
+  if (typeof window === 'undefined') return;
+  const safe = safeReturnTo(value);
+  if (safe) window.sessionStorage.setItem(RETURN_TO_KEY, safe);
+}
+
+function consumeReturnTo() {
+  if (typeof window === 'undefined') return '';
+  const value = rememberedReturnTo();
+  window.sessionStorage.removeItem(RETURN_TO_KEY);
+  return value;
+}
+
 function AuthPage() {
   const nav = useNavigate();
   const [mode, setMode] = useState<Mode>('signin');
@@ -13,20 +44,51 @@ function AuthPage() {
   const [busy, setBusy] = useState(false);
 
   async function continueAfterAuth() {
+    const requested = requestedReturnTo() || rememberedReturnTo();
+    if (requested) rememberReturnTo(requested);
+
     const response = await fetch('/api/business-context', { credentials: 'same-origin', cache: 'no-store' });
     if (response.status === 401) return nav({ to: '/auth' });
-    if (!response.ok) return nav({ to: '/' });
+    if (!response.ok) {
+      const fallback = consumeReturnTo();
+      if (fallback && typeof window !== 'undefined') window.location.assign(fallback);
+      else return nav({ to: '/' });
+      return;
+    }
     const body = await response.json() as { completed?: boolean };
-    return nav({ to: body.completed ? '/' : '/onboarding' });
+    if (!body.completed) return nav({ to: '/onboarding' });
+
+    const destination = consumeReturnTo();
+    if (destination && typeof window !== 'undefined') {
+      window.location.assign(destination);
+      return;
+    }
+    return nav({ to: '/' });
   }
-  useEffect(() => { void clientAuth.getSession().then((session) => { if (session) void continueAfterAuth(); }).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nav]);
+
+  useEffect(() => {
+    const requested = requestedReturnTo();
+    if (requested) rememberReturnTo(requested);
+    void clientAuth.getSession().then((session) => {
+      if (session) void continueAfterAuth();
+    }).catch(() => undefined);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [nav]);
+
+  function authCallbackUrl() {
+    if (typeof window === 'undefined') return '/auth';
+    const requested = requestedReturnTo() || rememberedReturnTo();
+    const url = new URL('/auth', window.location.origin);
+    if (requested) url.searchParams.set('next', requested);
+    return url.toString();
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");
     try {
       if (mode === 'verify') { await clientAuth.verifyEmail(email, otp); await continueAfterAuth(); return; }
       if (mode === 'forgot') {
-        await clientAuth.requestPasswordReset(email, `${window.location.origin}/auth`);
+        await clientAuth.requestPasswordReset(email, authCallbackUrl());
         setOtp(''); setPassword(''); setMode('reset');
         setError('أرسلنا رمزًا إلى بريدك. أدخل الرمز واختر كلمة مرور جديدة.'); return;
       }
@@ -36,7 +98,7 @@ function AuthPage() {
         setError('تم تغيير كلمة المرور. سجّل الدخول الآن ليعرض Google حفظ كلمة المرور الجديدة.'); return;
       }
       if (mode === 'signup') {
-        const result = await clientAuth.signUp(email, password, `${window.location.origin}/auth`);
+        const result = await clientAuth.signUp(email, password, authCallbackUrl());
         if (!result.session) {
           setMode('verify'); setOtp('');
           setError('أرسلنا رمز التحقق إلى بريدك. أدخله هنا لتكمل.'); return;
@@ -74,5 +136,4 @@ function AuthPage() {
   );
 }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute("/auth")({ component: AuthPage });

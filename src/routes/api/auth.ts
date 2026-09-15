@@ -14,13 +14,15 @@ function json(request: Request, body: unknown, status = 200, headers: HeadersIni
 function publicAuthClient() {
   const { insforge } = getServerConfig();
   const anonKey = process.env['INSFORGE_ANON_KEY']?.trim();
-  if (!anonKey) throw new Error('INSFORGE_ANON_KEY is required for public authentication.');
-  return createClient({ baseUrl: insforge.url, anonKey });
+  // InsForge public auth endpoints can operate without an anon key. Use it when
+  // configured, but do not turn a missing optional key into a runtime 500.
+  return anonKey
+    ? createClient({ baseUrl: insforge.url, anonKey })
+    : createClient({ baseUrl: insforge.url });
 }
 async function noteFailure(email: string, action: 'signin' | 'signup', request: Request) { try { await recordAuthFailure(email, action, request); } catch (error) { console.error('Auth throttle failure write failed', { action, error }); } }
 async function clearFailures(email: string, request: Request) { try { await clearSubjectAuthFailures(email, request); } catch (error) { console.error('Auth throttle cleanup failed', { error }); } }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/api/auth')({
   server: { handlers: {
     GET: async ({ request }) => {
@@ -41,7 +43,16 @@ export const Route = createFileRoute('/api/auth')({
       const action = ['signup','signin','verify-email','reset-request','reset-confirm'].includes(body.action || '') ? body.action! : null;
       if (!action) return json(request, { error: 'Unsupported auth action.' }, 400);
       if (!email || email.length > MAX_EMAIL) return json(request, { error: 'أدخل بريدًا إلكترونيًا صحيحًا.' }, 400);
-      const client = publicAuthClient();
+
+      let client: ReturnType<typeof publicAuthClient>;
+      try {
+        client = publicAuthClient();
+      } catch (error) {
+        console.error('Public authentication client unavailable', {
+          reason: error instanceof Error ? error.message : 'unknown',
+        });
+        return json(request, { error: 'خدمة الحساب غير متاحة مؤقتًا. حاول مرة أخرى بعد قليل.' }, 503, { 'retry-after': '30' });
+      }
 
       if (action === 'verify-email') {
         if (!/^\d{6}$/.test(otp)) return json(request, { error: 'أدخل رمز التحقق المكوّن من 6 أرقام.' }, 400);
@@ -52,10 +63,23 @@ export const Route = createFileRoute('/api/auth')({
       }
 
       if (action === 'reset-request') {
-        const { error } = await client.auth.sendResetPasswordEmail({ email, redirectTo: safeAuthRedirect(request, body.redirectTo) });
-        if (error) console.warn('Password reset email request rejected', { statusCode: error.statusCode });
-        // Keep the response generic so account existence is never disclosed.
-        return json(request, { resetCodeSent: true });
+        try {
+          // Code-based password reset only needs the email. Passing a preview
+          // redirect can cause provider rejection and is unnecessary for this flow.
+          const { data, error } = await client.auth.sendResetPasswordEmail({ email });
+          if (error || data?.success !== true) {
+            console.warn('Password reset email request rejected', {
+              statusCode: error?.statusCode,
+            });
+            return json(request, { error: 'تعذّر إرسال رمز الاستعادة حاليًا. حاول مرة أخرى بعد قليل.' }, 502, { 'retry-after': '30' });
+          }
+          return json(request, { resetCodeSent: true });
+        } catch (error) {
+          console.error('Password reset email request failed', {
+            reason: error instanceof Error ? error.message : 'unknown',
+          });
+          return json(request, { error: 'تعذّر إرسال رمز الاستعادة حاليًا. حاول مرة أخرى بعد قليل.' }, 503, { 'retry-after': '30' });
+        }
       }
 
       if (action === 'reset-confirm') {

@@ -53,6 +53,11 @@ const contextApi = await readFile(join(root, 'src/routes/api/business-context.ts
 const competitorsApi = await readFile(join(root, 'src/routes/api/competitors.ts'), 'utf8');
 const healthApi = await readFile(join(root, 'src/routes/api/health.ts'), 'utf8');
 expect(authApi.includes('guardSameOriginMutation') && authApi.includes('safeAuthRedirect'), 'Auth API mutation or redirect guard missing.');
+expect(authApi.includes("createClient({ baseUrl: insforge.url });"), 'Public auth still hard-fails when optional InsForge anon key is absent.');
+expect(authApi.includes("sendResetPasswordEmail({ email })"), 'Password reset must use the code-flow email-only provider contract.');
+expect(!authApi.includes("sendResetPasswordEmail({ email, redirectTo"), 'Password reset must not send preview redirect URLs to the code-flow endpoint.');
+expect(authApi.includes("data?.success !== true"), 'Password reset provider success is not being verified.');
+expect(authApi.includes('Password reset email request failed'), 'Password reset provider exceptions are not being handled.');
 expect(analyzeApi.includes('guardSameOriginMutation') && analyzeApi.includes('requestId') && analyzeApi.includes('MAX_REQUEST_BYTES'), 'Analyze API security boundary missing.');
 expect(contextApi.includes('guardSameOriginMutation'), 'Business context mutation guard missing.');
 expect(competitorsApi.includes('guardSameOriginMutation'), 'Competitor discovery mutation guard missing.');
@@ -81,4 +86,4 @@ for (const directory of browserRoots) {
 }
 expect(leaks.length === 0, `Server secret names leaked into browser modules: ${leaks.join(', ')}`);
 
-console.log('SECURITY_SMOKE_OK', JSON.stringify({ sameOrigin: true, crossOriginRejected: true, redirectLocked: true, oversizedTokenRejected: true, browserSecretLeaks: 0 }));
+console.log('SECURITY_SMOKE_OK', JSON.stringify({ sameOrigin: true, crossOriginRejected: true, redirectLocked: true, oversizedTokenRejected: true, passwordResetContract: true, browserSecretLeaks: 0 }));

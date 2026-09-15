@@ -107,7 +107,6 @@ function parseJsonObject(text: string): Record<string, unknown> {
   throw new Error('AI returned no valid JSON object.');
 }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/api/analyze')({
   server: {
     handlers: {

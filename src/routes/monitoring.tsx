@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Activity, Check, Plus, Power, RefreshCw, Trash2 } from "lucide-react";
 import { acknowledgeMonitoringEvent, createMonitoringTarget, deleteMonitoringTarget, listMonitoringEvents, listMonitoringTargets, runMonitoringCheck, setMonitoringActive, type MonitoringEvent, type MonitoringTarget } from "@/lib/monitoring.functions";
-// @ts-expect-error TanStack route types are generated separately.
 export const Route=createFileRoute("/monitoring")({component:MonitoringPage});
 
 const severityLabel=(value:string)=>value==="high"?"عالي":value==="medium"?"متوسط":"منخفض";

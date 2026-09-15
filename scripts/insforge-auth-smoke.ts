@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { createClient } from '@insforge/sdk';
 import { checkAuthRateLimit, clearSubjectAuthFailures, recordAuthFailure, AUTH_THROTTLE_POLICY } from '../src/lib/auth-rate-limit.server.ts';
 
 const baseUrl=(process.env.INSFORGE_URL??'').trim().replace(/\/$/,'');
@@ -25,6 +26,18 @@ for(let attempt=0;attempt<12;attempt+=1){
   try{await request('/api/database/records/auth_failures?select=id&limit=1');last=null;break}catch(error){last=error;await new Promise(resolve=>setTimeout(resolve,250));}
 }
 if(last)throw last;
+
+// InsForge documents password-reset requests as enumeration-safe: an unknown
+// email returns success without disclosing whether an account exists. This
+// probe therefore verifies that the public auth endpoint is reachable without
+// requiring an anon key while avoiding delivery to a real mailbox.
+const publicClient=createClient({baseUrl});
+const resetProbeEmail=`coanto-reset-probe-${Date.now()}@example.invalid`;
+const resetProbe=await publicClient.auth.sendResetPasswordEmail({email:resetProbeEmail});
+if(resetProbe.error||resetProbe.data?.success!==true){
+  throw new Error(`InsForge password reset public endpoint unavailable (${resetProbe.error?.statusCode??'unknown status'}).`);
+}
+console.log('INSFORGE_PASSWORD_RESET_PUBLIC_ENDPOINT_OK');
 
 const email=`ci-auth-${Date.now()}@example.com`;
 const authRequest=new Request('https://coanto.com/api/auth',{method:'POST',headers:{'x-real-ip':'203.0.113.42'}});

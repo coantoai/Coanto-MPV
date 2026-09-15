@@ -61,9 +61,15 @@ export function buildPrompt(main:SiteSnapshot,competitors:SiteSnapshot[]){return
   'Return JSON with competitors, signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.',
   'Each competitor must include name, url, why, evidence, sourceUrls, relevance (0-100), impact (0-100), and threat (low/medium/high/critical).',
   'Each signal should include title, description/detail, the related competitor, impact, confidence, and sourceUrls when available.',
-  'priority_matrix items must use zone: do-now, test, monitor, or ignore. action_plan items should use timing: today, week, or later.',
+  'priority_matrix items must use zone: do-now, test, monitor, or ignore. Every item must also include why, sourceUrls, evidenceFor, counterEvidence, trigger, and nextAction.',
+  'Decision-linked sourceUrls must support that specific priority_matrix row. Do not attach unrelated URLs merely to make a recommendation look supported.',
+  'evidenceFor and counterEvidence must contain only evidence actually found. If no counter-evidence was verified, return an empty counterEvidence array and state the gap in unknowns; never invent an opposing fact.',
+  'trigger must be an observable condition that would reopen or change the decision. Do not invent a date, threshold, probability, revenue effect, margin, or price guardrail that is not present in evidence or owner-provided business context.',
+  'nextAction must be bounded and reversible when internal constraints are missing. Do not prescribe an exact price, spend, margin, inventory move, or other irreversible action unless the supplied business context supports it.',
+  'If a priority_matrix row lacks decision-linked evidence, still return the row if useful but leave sourceUrls empty so the product can classify it as insufficient evidence instead of promoting it.',
+  'action_plan items should use timing: today, week, or later.',
   'Give concrete decisions and next steps, not generic advice. Keep user-facing language in simple clear Arabic and explain unavoidable technical terms.',
-  'Never invent prices, revenue, market share, percentages, dates, or financial impact. Clearly distinguish facts, inference, recommendation, and unknown.',
+  'Never invent prices, revenue, market share, percentages, dates, financial impact, or confidence percentages. Clearly distinguish facts, inference, recommendation, counter-evidence, and unknown.',
 ].join('\n');}
 
 export function parseJsonBlock(text:string){

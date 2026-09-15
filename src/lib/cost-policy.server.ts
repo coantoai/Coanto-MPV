@@ -9,6 +9,8 @@ export type CostPolicy = {
   aiWebSearchMaxUses: number;
 };
 
+const ANALYSIS_ENGINE_VERSION = 'customer-commercial-v1';
+
 function boundedInteger(value: string | undefined, fallback: number, min: number, max: number) {
   const parsed = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -42,6 +44,7 @@ export function analysisInputHash(input: {
   businessContextUpdatedAt: string;
 }) {
   const payload = {
+    analysisEngineVersion: ANALYSIS_ENGINE_VERSION,
     storeUrl: input.storeUrl.trim().toLowerCase(),
     competitors: [...new Set(input.competitors.map((item) => item.trim().toLowerCase()).filter(Boolean))].sort(),
     businessContextUpdatedAt: input.businessContextUpdatedAt,
