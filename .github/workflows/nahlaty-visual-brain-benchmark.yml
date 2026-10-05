@@ -1,0 +1,38 @@
+name: NAHLATY Visual Brain Benchmark
+
+on:
+  pull_request:
+    paths:
+      - "scripts/nahlaty-visual-brain-benchmark.mjs"
+      - ".github/workflows/nahlaty-visual-brain-benchmark.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Run NAHLATY benchmark
+        run: node scripts/nahlaty-visual-brain-benchmark.mjs
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nahlaty-visual-brain-benchmark
+          path: nahlaty-visual-brain-benchmark.json
+          if-no-files-found: ignore
