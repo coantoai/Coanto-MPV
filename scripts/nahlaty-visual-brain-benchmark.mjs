@@ -1,3 +1,4 @@
+// FINAL NAHLATY BENCHMARK DISPATCH — heart + engine + plant + contextual follow-ups
 const candidateFamilies = [
   { label: "GPT", patterns: [/^openai\/gpt-6-astra$/i,/^openai\/gpt-5\.6/i,/^openai\/gpt-5\.5/i,/^openai\/gpt-5/i] },
   { label: "Claude", patterns: [/^anthropic\/claude-sonnet-5\.5/i,/^anthropic\/claude-sonnet-5/i,/^anthropic\/claude-sonnet-4\.5/i,/^anthropic\/claude-sonnet-4/i] },
