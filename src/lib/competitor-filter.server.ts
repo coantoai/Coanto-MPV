@@ -18,6 +18,12 @@ const strongCommerceSignals = [/add\s+to\s+cart/i,/shopping\s+cart/i,/checkout/i
 const editorialSignals = /\b(news|analysis|research|strategy|guide|review|reviews|alternatives|competitors|comparison|stock|investing|financial|salary|employees|funding|ratings?|similar\s+sites|market\s+data)\b/i;
 
 function textOf(site: SiteSnapshot) { return `${site.title} ${site.description} ${site.h1.join(' ')} ${site.h2.join(' ')} ${site.text.slice(0,12000)}`.toLowerCase(); }
+function isSameBrandDomain(mainHost: string, candidateHost: string) {
+  const normalize = (host: string) => host.toLowerCase().replace(/^www\./, '').split('.')[0].replace(/[^a-z0-9]/g, '');
+  const brand = normalize(mainHost);
+  // Avoid matching very short or generic first labels across unrelated businesses.
+  return brand.length >= 4 && brand === normalize(candidateHost);
+}
 function isObviousNonCompetitor(host: string) { return obviousNonCompetitorHosts.some((blocked) => host === blocked || host.endsWith(`.${blocked}`)); }
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 function containsTerm(text: string, term: string) { const pattern = escapeRegExp(term.trim()).replace(/\s+/g, '\\s+'); return new RegExp(`(?:^|[^a-z0-9])${pattern}(?=$|[^a-z0-9])`, 'i').test(text); }
@@ -90,7 +96,7 @@ export function filterCommercialCompetitors(main: SiteSnapshot, candidates: Site
   const explicitHosts = new Set(explicit.map(hostname).filter(Boolean));
   return candidates.filter((site) => {
     const host = hostname(site.url);
-    if (!host || host === own || host.endsWith(`.${own}`)) return false;
+    if (!host || host === own || host.endsWith(`.${own}`) || isSameBrandDomain(own, host)) return false;
     if (explicitHosts.has(host)) return true;
     if (isObviousNonCompetitor(host)) return false;
     const commerce = commerceScore(site);
