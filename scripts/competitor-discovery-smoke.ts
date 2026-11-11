@@ -1,4 +1,4 @@
-import { competitorReason, filterCommercialCompetitors, scoreCommercialCompetitor } from '../src/lib/competitor-filter.server.ts';
+import { assessCommercialCompetitor, competitorReason, filterCommercialCompetitors, scoreCommercialCompetitor } from '../src/lib/competitor-filter.server.ts';
 import { discoverCompetitorsWithGemini } from '../src/lib/gemini-competitor-discovery.server.ts';
 import type { SiteSnapshot } from '../src/lib/analyze.server.ts';
 
@@ -11,7 +11,7 @@ const unrelated=site('https://flowers.com','Flowers','shop flowers bouquets chec
 const accepted=filterCommercialCompetitors(main,[editorial,unrelated,real]);
 if(accepted.length!==1||accepted[0]?.url!==real.url)throw new Error('Commercial competitor gate accepted an invalid candidate or rejected a valid one.');
 const score=scoreCommercialCompetitor(main,real);
-if(score<50||score>100)throw new Error(`Unexpected competitor relevance score: ${score}`);
+if(score<50||score>=100)throw new Error(`Unexpected competitor relevance score: ${score}`);
 const reason=competitorReason(main,real);
 if(!/commercial signals/i.test(reason)||!/direct website evidence/i.test(reason))throw new Error('Competitor rationale is missing evidence explanation.');
 
@@ -57,6 +57,17 @@ const ungroundedService=site(
 );
 if(filterCommercialCompetitors(serviceMain,[ungroundedService]).length!==0)throw new Error('Grounded fallback without a candidate-specific Google source must not bypass verification.');
 
+// A niche slipper shop shares the footwear category but not the target's sneaker product.
+const adjacent=site('https://wool-slippers.example','Wool Slippers','footwear shoes slippers wool shop products checkout shipping returns');
+const directAssessment=assessCommercialCompetitor(main,real);
+const adjacentAssessment=assessCommercialCompetitor(main,adjacent);
+const indexedAssessment=assessCommercialCompetitor(main,grounded);
+if(directAssessment.relationship!=='direct')throw new Error('Shared sneaker products should be classified as direct overlap.');
+if(adjacentAssessment.relationship!=='adjacent')throw new Error('Slippers must not be labelled a verified direct sneaker competitor.');
+if(adjacentAssessment.score>=directAssessment.score)throw new Error('Adjacent product relevance must rank below shared products.');
+if(indexedAssessment.relationship!=='unverified'||indexedAssessment.evidenceQuality!=='indexed-only')throw new Error('Indexed evidence may not be called direct-site verification.');
+if(score>=100)throw new Error('Commercial keyword counts must not saturate relevance at 100.');
+
 const originalFetch=globalThis.fetch;
 const originalKey=process.env.GEMINI_API_KEY;
 const originalModel=process.env.GEMINI_DISCOVERY_MODEL;
@@ -95,11 +106,11 @@ try{
   if(groundedDirect.status!=='ok'||groundedDirect.candidateCount!==1||groundedDirect.searchQueries!==1||groundedDirect.snapshots.length!==1)throw new Error('Mocked grounded Gemini discovery did not return the expected direct snapshot.');
   if(!groundedDirect.snapshots[0]?.evidence.some((entry)=>entry.startsWith('Gemini Google Search grounded competitor candidate:')))throw new Error('Candidate-specific Gemini grounding was not attached to the verified direct site.');
   if(!groundedDirect.snapshots[0]?.evidence.some((entry)=>entry.startsWith('Google Search grounding source:')))throw new Error('Grounding source provenance was not preserved.');
+  if(groundedDirect.snapshots[0]?.description.includes('Competes for the same footwear customer'))throw new Error('AI inference contaminated the directly observed website description.');
 
   geminiMode='grounded-fallback';
   const groundedFallback=await discoverCompetitorsWithGemini(main);
-  if(groundedFallback.snapshots.length!==1||groundedFallback.snapshots[0]?.sourceType!=='search-index')throw new Error('Grounded candidate did not survive when the official site blocked direct collection.');
-  if(!groundedFallback.snapshots[0]?.evidence.some((entry)=>entry.startsWith('Google Search grounding source:')))throw new Error('Grounded fallback lost its source attribution.');
+  if(groundedFallback.snapshots.length!==0)throw new Error('Grounding alone must not manufacture a site snapshot when the company website and index are inaccessible.');
 
   geminiMode='ungrounded-direct';
   const ungroundedDirect=await discoverCompetitorsWithGemini(main);
