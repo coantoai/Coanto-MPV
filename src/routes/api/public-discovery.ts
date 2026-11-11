@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { fetchSite, validateTargetUrl, hostname } from '@/lib/analyze.server';
+import { fetchSite, validateTargetUrl, hostname, discoverCompetitors } from '@/lib/analyze.server';
 import { discoverCompetitorsWithGemini } from '@/lib/gemini-competitor-discovery.server';
 import { filterCommercialCompetitors, scoreCommercialCompetitor, competitorReason } from '@/lib/competitor-filter.server';
 
@@ -24,13 +24,24 @@ export const Route = createFileRoute('/api/public-discovery')({
       try {
         const main=await fetchSite(TARGET);
         const discovered=await discoverCompetitorsWithGemini(main);
-        const accepted=filterCommercialCompetitors(main,discovered.snapshots);
+        // Public search fallback: do not silently return zero when Gemini is missing,
+        // unavailable, or its grounded output cannot be parsed.
+        let snapshots=discovered.snapshots;
+        let providerStatus: string=discovered.status;
+        let candidateCount=discovered.candidateCount;
+        if (snapshots.length===0) {
+          const fallback=await discoverCompetitors(main);
+          snapshots=fallback;
+          candidateCount=fallback.length;
+          providerStatus=fallback.length ? 'public-search-fallback' : discovered.status==='ok' ? 'no-verified-candidates' : discovered.status;
+        }
+        const accepted=filterCommercialCompetitors(main,snapshots);
         return respond({
           target:{url:main.url,title:main.title,description:main.description,sourceType:main.sourceType},
-          providerStatus:discovered.status,candidateCount:discovered.candidateCount,
+          providerStatus,candidateCount,
           competitors:accepted.map(c=>({name:c.title||hostname(c.url),url:c.url,score:scoreCommercialCompetitor(main,c),reason:competitorReason(main,c),description:c.description,sourceType:c.sourceType,evidence:c.evidence})),
           verifiedCount:accepted.length,live:true,checkedAt:new Date().toISOString()
-        },discovered.status==='missing-key'?503:200);
+        },providerStatus==='missing-key'?503:200);
       } catch (e) {console.error('Public pilot failed',e);return respond({error:'Live discovery unavailable; no results were fabricated.'},503);}
     }
   }}
