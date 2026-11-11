@@ -4,7 +4,7 @@ type JsonRecord = Record<string, unknown>;
 type GeminiCandidate = { name: string; url: string; reason: string; category: string; commercialEvidence: string };
 type GroundingSource = { index: number; uri: string; title: string };
 type GroundingSupport = { start: number; end: number; text: string; chunkIndices: number[] };
-export type GeminiDiscoveryResult = { snapshots: SiteSnapshot[]; candidateCount: number; searchQueries: number; status: 'ok' | 'missing-key' | 'provider-error' | 'empty' };
+export type GeminiDiscoveryResult = { snapshots: SiteSnapshot[]; candidateCount: number; searchQueries: number; status: 'ok' | 'missing-key' | 'provider-error' | 'quota-exhausted' | 'rate-limited' | 'empty' };
 
 function record(value: unknown): JsonRecord { return value && typeof value === 'object' ? value as JsonRecord : {}; }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
@@ -164,7 +164,9 @@ function augmentSnapshot(site: SiteSnapshot, candidate: GeminiCandidate, sources
   return { ...site, evidence: [...site.evidence, ...groundedEvidence(candidate, sources)] };
 }
 
+let quotaCooldownUntil = 0;
 export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise<GeminiDiscoveryResult> {
+  if (Date.now() < quotaCooldownUntil) return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'quota-exhausted' };
   const apiKey = process.env['GEMINI_API_KEY']?.trim();
   if (!apiKey) return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'missing-key' };
   const model = discoveryModel();
@@ -183,6 +185,8 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
     if (!response.ok) {
       const detail = (await response.text()).slice(0, 500);
       console.error('Gemini competitor discovery failed', { model, status: response.status, detail });
+      if (response.status === 402) { quotaCooldownUntil = Date.now() + 5 * 60_000; return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'quota-exhausted' }; }
+      if (response.status === 429) return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'rate-limited' };
       return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'provider-error' };
     }
     const raw = record(await response.json());
