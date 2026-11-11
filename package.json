@@ -47,8 +47,7 @@
     "launch:search-live": "bun scripts/search-provider-live.ts"
   },
   "overrides": {
-    "rolldown": "1.2.1",
-    "@tanstack/router-core": "1.171.43"
+    "rolldown": "1.2.1"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.43",
