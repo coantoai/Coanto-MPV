@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { getMainSnapshot, validateTargetUrl, hostname } from '@/lib/analyze.server';
+import { fetchSite, validateTargetUrl, hostname } from '@/lib/analyze.server';
 import { discoverCompetitorsWithGemini } from '@/lib/gemini-competitor-discovery.server';
 import { filterCommercialCompetitors, scoreCommercialCompetitor, competitorReason } from '@/lib/competitor-filter.server';
 
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/api/public-discovery')({
       if (Date.now()-lastRun < 60000) return respond({error:'Please retry in 60 seconds',code:'RATE_LIMIT'},429);
       lastRun=Date.now();
       try {
-        const main=await getMainSnapshot(TARGET);
+        const main=await fetchSite(TARGET);
         const discovered=await discoverCompetitorsWithGemini(main);
         const accepted=filterCommercialCompetitors(main,discovered.snapshots);
         return respond({
