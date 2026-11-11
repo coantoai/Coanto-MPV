@@ -159,29 +159,9 @@ function groundedEvidence(candidate: GeminiCandidate, sources: GroundingSource[]
   ];
 }
 function augmentSnapshot(site: SiteSnapshot, candidate: GeminiCandidate, sources: GroundingSource[]): SiteSnapshot {
-  // Never let ungrounded model prose influence verification scores. If Google Search
-  // did not link evidence to this exact candidate, verification uses only the site/index snapshot.
+  // Keep the site's independently observed content intact; model prose is not website evidence.
   if (!sources.length) return site;
-  const grounded = groundedEvidence(candidate, sources);
-  const candidateContext = `Grounded discovery candidate: ${candidate.name}. Category: ${candidate.category}. Commercial evidence: ${candidate.commercialEvidence}. ${candidate.reason}`;
-  return {
-    ...site,
-    description: [site.description, candidate.reason].filter(Boolean).join(' '),
-    text: `${site.text}\n${candidateContext}`.slice(0, 18000),
-    evidence: [...site.evidence, ...grounded],
-  };
-}
-function groundedSnapshot(candidate: GeminiCandidate, sources: GroundingSource[]): SiteSnapshot {
-  return {
-    url: candidate.url,
-    title: candidate.name,
-    description: candidate.reason,
-    h1: [candidate.name],
-    h2: candidate.category ? [candidate.category] : [],
-    text: `Google Search grounded public evidence. ${candidate.name}. Category: ${candidate.category}. Commercial evidence: ${candidate.commercialEvidence}. ${candidate.reason}`.slice(0, 12000),
-    sourceType: 'search-index',
-    evidence: groundedEvidence(candidate, sources),
-  };
+  return { ...site, evidence: [...site.evidence, ...groundedEvidence(candidate, sources)] };
 }
 
 export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise<GeminiDiscoveryResult> {
@@ -218,7 +198,8 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
           const indexed = await searchEvidenceForUrl(candidate.url);
           if (indexed) return augmentSnapshot(indexed, candidate, candidateSources);
         } catch {}
-        return candidateSources.length ? groundedSnapshot(candidate, candidateSources) : null;
+        // Search citations alone are insufficient to verify the candidate's own website.
+        return null;
       }
     }));
     const snapshots = settled.filter((item): item is SiteSnapshot => Boolean(item));
