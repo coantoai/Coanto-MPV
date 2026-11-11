@@ -59,11 +59,14 @@ async function collect(): Promise<DiscoveryResponse> {
     exa: exa?.candidateCount ?? 0,
     'public-search': publicResults.length,
   };
+  // Exclude regional domains of the target brand (e.g. allbirds.co.uk vs allbirds.com).
+  const targetBrand=hostname(main.url).split('.')[0];
+  const sameBrandDomain=(host:string)=>host.split('.')[0]===targetBrand;
   const byHost = new Map<string,CandidateEntry>();
   const add = (provider:ProviderName, snapshots:SiteSnapshot[]) => {
     for(const site of snapshots) {
       const host=hostname(site.url);
-      if(!host || host===hostname(main.url) || host.endsWith('.'+hostname(main.url)))continue;
+      if(!host || host===hostname(main.url) || host.endsWith('.'+hostname(main.url)) || sameBrandDomain(host))continue;
       const existing=byHost.get(host);
       if(!existing){byHost.set(host,{snapshot:site,providers:new Set([provider])});continue;}
       existing.providers.add(provider);
