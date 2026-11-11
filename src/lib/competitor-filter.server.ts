@@ -55,10 +55,12 @@ function canonicalProduct(term: string) {
 }
 export function assessCommercialCompetitor(main: SiteSnapshot, candidate: SiteSnapshot): CompetitorAssessment {
   const mainText=textOf(main), candidateText=textOf(candidate);
+  // A product named only in a footer/navigation is insufficient to prove a core offering.
+  const candidatePrimaryText=[candidate.title,candidate.description,...candidate.h1,...candidate.h2].join(' ').toLowerCase();
   const overlap=categoryMatches(main,candidate), strong=strongCategoryMatches(main,candidate);
   const matched=new Set<string>();
   for(const term of productSpecificTerms) {
-    if(containsTerm(mainText,term)&&containsTerm(candidateText,term)) matched.add(canonicalProduct(term));
+    if(containsTerm(mainText,term)&&containsTerm(candidatePrimaryText,term)) matched.add(canonicalProduct(term));
   }
   const sharedProducts=[...matched];
   const sharedAttributes=sharedAttributeTerms.filter((term)=>containsTerm(mainText,term)&&containsTerm(candidateText,term)).slice(0,5);
@@ -66,7 +68,7 @@ export function assessCommercialCompetitor(main: SiteSnapshot, candidate: SiteSn
   const directlyOverlapping=sharedProducts.length>0 || (!mainSpecific && strong>0);
   const commerce=commerceScore(candidate),direct=candidate.sourceType==='direct-site';
   const relationship:CompetitorRelationship=!direct?'unverified':directlyOverlapping?'direct':'adjacent';
-  const score=Math.max(0,Math.min(92,Math.round(18+Math.min(overlap,2)*15+Math.min(strong,2)*6+Math.min(commerce,7)*2+Math.min(sharedProducts.length,3)*5+Math.min(sharedAttributes.length,3)*2+Number(directlyOverlapping)*8+Number(direct)*5+Number(googleGrounded(candidate))*2-editorialScore(candidate)*18)));
+  const score=Math.max(0,Math.min(92,Math.round(17+Math.min(overlap,2)*12+Math.min(strong,2)*4+Math.min(commerce,6)*1.75+Math.min(sharedProducts.length,3)*5+Math.min(sharedAttributes.length,3)*1.5+Number(directlyOverlapping)*6+Number(direct)*6+Number(googleGrounded(candidate))*2-editorialScore(candidate)*18)));
   const reason=[
     'category overlaps: '+overlap,
     'shared products: '+(sharedProducts.join(', ')||'not established'),
