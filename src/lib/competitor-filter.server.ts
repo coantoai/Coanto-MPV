@@ -33,20 +33,56 @@ function googleGrounded(site: SiteSnapshot) {
     && groundedSourceCount(site) > 0;
 }
 
+export type CompetitorRelationship = 'direct' | 'adjacent' | 'unverified';
+export type CompetitorAssessment = {
+  score: number;
+  relationship: CompetitorRelationship;
+  evidenceQuality: 'verified-site' | 'indexed-only';
+  sharedProducts: string[];
+  sharedAttributes: string[];
+  sharedCategories: number;
+  commercialSignals: number;
+  reason: string;
+};
+const productSpecificTerms = ['sneakers','sneaker','running shoes','walking shoes','trainers','boots','boot','sandals','sandal','slippers','slipper','flats','loafers','t-shirt','hoodie','leggings','jacket','sweater','socks','moisturizer','serum','perfume','laptop','smartphone','headphones','crm','project management','inventory management'];
+const sharedAttributeTerms = ['sustainable','eco-friendly','recycled','wool','natural materials','organic','breathable','comfortable','comfort','performance','ethical'];
+function canonicalProduct(term: string) {
+  if (term === 'sneakers' || term === 'sneaker') return 'sneakers';
+  if (term === 'boots' || term === 'boot') return 'boots';
+  if (term === 'sandals' || term === 'sandal') return 'sandals';
+  if (term === 'slippers' || term === 'slipper') return 'slippers';
+  return term;
+}
+export function assessCommercialCompetitor(main: SiteSnapshot, candidate: SiteSnapshot): CompetitorAssessment {
+  const mainText=textOf(main), candidateText=textOf(candidate);
+  const overlap=categoryMatches(main,candidate), strong=strongCategoryMatches(main,candidate);
+  const matched=new Set<string>();
+  for(const term of productSpecificTerms) {
+    if(containsTerm(mainText,term)&&containsTerm(candidateText,term)) matched.add(canonicalProduct(term));
+  }
+  const sharedProducts=[...matched];
+  const sharedAttributes=sharedAttributeTerms.filter((term)=>containsTerm(mainText,term)&&containsTerm(candidateText,term)).slice(0,5);
+  const mainSpecific=productSpecificTerms.some((term)=>containsTerm(mainText,term));
+  const directlyOverlapping=sharedProducts.length>0 || (!mainSpecific && strong>0);
+  const commerce=commerceScore(candidate),direct=candidate.sourceType==='direct-site';
+  const relationship:CompetitorRelationship=!direct?'unverified':directlyOverlapping?'direct':'adjacent';
+  const score=Math.max(0,Math.min(92,Math.round(18+Math.min(overlap,2)*15+Math.min(strong,2)*6+Math.min(commerce,7)*2+Math.min(sharedProducts.length,3)*5+Math.min(sharedAttributes.length,3)*2+Number(directlyOverlapping)*8+Number(direct)*5+Number(googleGrounded(candidate))*2-editorialScore(candidate)*18)));
+  const reason=[
+    'category overlaps: '+overlap,
+    'shared products: '+(sharedProducts.join(', ')||'not established'),
+    'commercial signals: '+commerce,
+    direct?'direct website evidence':'indexed evidence only; website not verified',
+    'relationship: '+relationship
+  ].join('; ')+'.';
+  return {score,relationship,evidenceQuality:direct?'verified-site':'indexed-only',sharedProducts,sharedAttributes,sharedCategories:overlap,commercialSignals:commerce,reason};
+}
 export function scoreCommercialCompetitor(main: SiteSnapshot, candidate: SiteSnapshot) {
-  const groundedBonus = googleGrounded(candidate) ? 10 : 0;
-  const directBonus = candidate.sourceType === 'direct-site' ? 2 : 0;
-  const raw = commerceScore(candidate) + strongCategoryMatches(main, candidate) * 6 + categoryMatches(main, candidate) * 2 + groundedBonus + directBonus - editorialScore(candidate);
-  return Math.max(0, Math.min(100, Math.round(raw * 7)));
+  return assessCommercialCompetitor(main,candidate).score;
 }
 export function competitorReason(main: SiteSnapshot, candidate: SiteSnapshot) {
-  const overlap = categoryMatches(main, candidate);
-  const commerce = commerceScore(candidate);
-  const evidence = candidate.sourceType === 'direct-site'
-    ? googleGrounded(candidate) ? 'direct website + candidate-specific Google Search grounding' : 'direct website evidence'
-    : googleGrounded(candidate) ? 'candidate-specific Google Search grounded public evidence' : 'indexed public evidence';
-  return `${overlap ? `${overlap} category overlap${overlap > 1 ? 's' : ''}` : 'grounded competitive relationship'}; ${commerce} commercial signals; ${evidence}.`;
+  return assessCommercialCompetitor(main,candidate).reason;
 }
+
 export function filterCommercialCompetitors(main: SiteSnapshot, candidates: SiteSnapshot[], explicit: string[] = []) {
   const own = hostname(main.url);
   const explicitHosts = new Set(explicit.map(hostname).filter(Boolean));
