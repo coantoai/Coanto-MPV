@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { fetchSite, validateTargetUrl, hostname, discoverCompetitors } from '@/lib/analyze.server';
 import { discoverCompetitorsWithGemini } from '@/lib/gemini-competitor-discovery.server';
+import { discoverCompetitorsWithExa } from '@/lib/exa-competitor-discovery.server';
 import { filterCommercialCompetitors, scoreCommercialCompetitor, competitorReason } from '@/lib/competitor-filter.server';
 
 const TARGET = 'https://www.allbirds.com/';
@@ -23,25 +24,34 @@ export const Route = createFileRoute('/api/public-discovery')({
       lastRun=Date.now();
       try {
         const main=await fetchSite(TARGET);
-        const discovered=await discoverCompetitorsWithGemini(main);
-        // Public search fallback: do not silently return zero when Gemini is missing,
-        // unavailable, or its grounded output cannot be parsed.
-        let snapshots=discovered.snapshots;
-        let providerStatus: string=discovered.status;
-        let candidateCount=discovered.candidateCount;
-        if (snapshots.length===0) {
-          const fallback=await discoverCompetitors(main);
-          snapshots=fallback;
-          candidateCount=fallback.length;
-          providerStatus=fallback.length ? 'public-search-fallback' : discovered.status==='ok' ? 'no-verified-candidates' : discovered.status;
+        // Independent discovery sources; a failing provider must not stop the others.
+        const [gemini,exa,publicSearch]=await Promise.allSettled([
+          discoverCompetitorsWithGemini(main),
+          discoverCompetitorsWithExa(main),
+          discoverCompetitors(main)
+        ]);
+        const geminiResult=gemini.status==='fulfilled'?gemini.value:null;
+        const exaResult=exa.status==='fulfilled'?exa.value:null;
+        const publicResults=publicSearch.status==='fulfilled'?publicSearch.value:[];
+        const byHost=new Map<string,typeof publicResults[number]>();
+        for(const site of [...(geminiResult?.snapshots??[]),...(exaResult?.snapshots??[]),...publicResults]){
+          const host=hostname(site.url);
+          if(host && (!byHost.has(host)||site.sourceType==='direct-site'))byHost.set(host,site);
         }
+        const snapshots=[...byHost.values()];
+        const candidateCount=(geminiResult?.candidateCount??0)+(exaResult?.candidateCount??0)+publicResults.length;
+        const providerStatus=[
+          `gemini:${geminiResult?.status??'failed'}`,
+          `exa:${exaResult?.status??'failed'}`,
+          `public-search:${publicSearch.status==='fulfilled'?'ok':'failed'}`
+        ].join(',');
         const accepted=filterCommercialCompetitors(main,snapshots);
         return respond({
           target:{url:main.url,title:main.title,description:main.description,sourceType:main.sourceType},
           providerStatus,candidateCount,
           competitors:accepted.map(c=>({name:c.title||hostname(c.url),url:c.url,score:scoreCommercialCompetitor(main,c),reason:competitorReason(main,c),description:c.description,sourceType:c.sourceType,evidence:c.evidence})),
           verifiedCount:accepted.length,live:true,checkedAt:new Date().toISOString()
-        },providerStatus==='missing-key'?503:200);
+        },200);
       } catch (e) {console.error('Public pilot failed',e);return respond({error:'Live discovery unavailable; no results were fabricated.'},503);}
     }
   }}
