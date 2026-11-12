@@ -46,7 +46,9 @@ function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'databas
   else if (code === '42P01' || code === 'PGRST205' || /relation .* does not exist|table .* not found|schema cache/i.test(message)) reason = 'BACKEND_SCHEMA_UNAVAILABLE';
   else if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|timeout/i.test(message)) reason = 'BACKEND_CONNECTION_FAILED';
   else if (code === 'PGRST116') reason = 'BACKEND_QUERY_RETURNED_NO_MATCH';
-  if (/relation .* does not exist|table .* not found|schema cache|could not find the table/i.test(message)) messageClass = 'TABLE_OR_SCHEMA_NOT_FOUND';
+  else if (/no backend services available for app/i.test(message)) reason = 'BACKEND_SERVICES_UNAVAILABLE';
+  if (/no backend services available for app/i.test(message)) messageClass = 'BACKEND_SERVICE_UNAVAILABLE';
+  else if (/relation .* does not exist|table .* not found|schema cache|could not find the table/i.test(message)) messageClass = 'TABLE_OR_SCHEMA_NOT_FOUND';
   else if (/permission denied|not authorized|insufficient privilege|row-level security|row level security/i.test(message)) messageClass = 'PERMISSION_OR_RLS';
   else if (/invalid.*(key|token|jwt)|unauthorized|authentication/i.test(message)) messageClass = 'AUTHENTICATION';
   else if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|timeout/i.test(message)) messageClass = 'NETWORK';
