@@ -1,0 +1,78 @@
+name: Gemini Quota Diagnostic
+
+on:
+  push:
+    branches:
+      - test/google-agent-isolated
+    paths:
+      - '.github/workflows/gemini-quota-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: GOOGLE_AGENT_TEST
+    env:
+      GEMINI_API_KEY: ${{ secrets.COANTO_GOOGLE_AGENT_TEST }}
+      GEMINI_MODEL: gemini-3.1-flash-lite
+    steps:
+      - name: Diagnose plain Gemini and Google Search grounding quotas
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const key = process.env.GEMINI_API_KEY;
+          const model = process.env.GEMINI_MODEL;
+          if (!key) {
+            console.log(JSON.stringify({status:"BLOCKED",reason:"COANTO_GOOGLE_AGENT_TEST secret missing in GOOGLE_AGENT_TEST"}));
+            process.exit(2);
+          }
+          const tests = [
+            {name:"plain_generate_content", body:{contents:[{role:"user",parts:[{text:"Reply with exactly: COANTO_DIAGNOSTIC_OK"}]}],generationConfig:{temperature:0,maxOutputTokens:32}}},
+            {name:"google_search_grounding", body:{contents:[{role:"user",parts:[{text:"Use Google Search to find the official website of Allbirds. Return its URL and one source."}]}],tools:[{google_search:{}}],generationConfig:{temperature:0,maxOutputTokens:128}}}
+          ];
+          const results=[];
+          for (const test of tests) {
+            try {
+              const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+                method:"POST",
+                headers:{"Content-Type":"application/json","x-goog-api-key":key},
+                body:JSON.stringify(test.body)
+              });
+              const payload=await response.json().catch(()=>({}));
+              const error=payload.error ?? {};
+              const details=Array.isArray(error.details)?error.details.map(d=>({
+                type:d["@type"] ?? null,
+                reason:d.reason ?? d.metadata?.reason ?? null,
+                domain:d.domain ?? d.metadata?.domain ?? null,
+                quotaMetric:d.metadata?.quotaMetric ?? d.quotaMetric ?? null,
+                quotaId:d.metadata?.quotaId ?? d.quotaId ?? null,
+                quotaValue:d.metadata?.quotaValue ?? d.quotaValue ?? null,
+                consumer:d.metadata?.consumer ?? null,
+                retryDelay:d.retryDelay ?? null
+              })):[];
+              const candidates=Array.isArray(payload.candidates)?payload.candidates:[];
+              const grounding=candidates.map(c=>c.groundingMetadata ?? null).filter(Boolean);
+              results.push({
+                name:test.name,
+                httpStatus:response.status,
+                status:response.ok?"PASS":"FAIL",
+                retryAfter:response.headers.get("retry-after"),
+                errorStatus:error.status ?? null,
+                errorMessage:error.message ?? null,
+                errorDetails:details,
+                candidateCount:candidates.length,
+                groundingMetadataPresent:grounding.length>0,
+                groundingQueries:grounding.flatMap(g=>g.webSearchQueries ?? []),
+                groundingSources:grounding.flatMap(g=>g.groundingChunks ?? []).map(c=>c.web?.uri).filter(Boolean)
+              });
+            } catch (e) {
+              results.push({name:test.name,status:"NETWORK_ERROR",errorMessage:String(e)});
+            }
+          }
+          console.log("GEMINI_QUOTA_DIAGNOSTIC="+JSON.stringify({model,results},null,2));
+          if(results.some(r=>r.status!=="PASS")) process.exitCode=1;
+          NODE
