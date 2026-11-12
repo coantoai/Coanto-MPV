@@ -35,12 +35,16 @@ jobs:
         run: bun install
       - name: Typecheck
         run: npm run typecheck
-      - name: Run Gemini diagnostic
-        id: gemini
-        continue-on-error: true
-        run: npm run test:ai
-      - name: Record Gemini diagnostic outcome
-        if: always()
-        run: echo "gemini-decision outcome=${{ steps.gemini.outcome }} conclusion=${{ steps.gemini.conclusion }}"
       - name: Build
         run: npm run build
+      - name: Run Gemini diagnostic
+        id: gemini
+        run: npm run test:ai
+      - name: Upload Gemini diagnostic report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coanto-gemini-diagnostic-report
+          path: ai-benchmark-report.json
+          if-no-files-found: warn
+          retention-days: 7
