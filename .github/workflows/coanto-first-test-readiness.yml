@@ -91,6 +91,17 @@ jobs:
           echo "{\"name\":\"gemini_grounded_allbirds\",\"status\":\"$status\",\"exit_code\":$code}" > readiness/gemini-live-status.json
           exit "$code"
 
+      - name: InsForge isolated database integration smoke
+        id: insforge_crud
+        if: always()
+        shell: bash
+        run: |
+          if [ -z "$INSFORGE_URL" ] || [ -z "$INSFORGE_API_KEY" ]; then
+            echo "BLOCKED: isolated InsForge test credentials unavailable."
+            exit 1
+          fi
+          bun run test:insforge
+
       - name: Read-only InsForge connectivity probe
         id: insforge_probe
         if: always()
