@@ -39,6 +39,46 @@ function parseJson(text: string) {
   return {} as JsonRecord;
 }
 
+
+const GEMINI_MAX_ATTEMPTS = 3;
+const GEMINI_RETRY_BASE_MS = 1_000;
+function retryDelayMs(response: Response, errorBody: string, attempt: number) {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(15_000, Math.max(0, seconds * 1_000));
+    const dateDelay = Date.parse(retryAfter) - Date.now();
+    if (Number.isFinite(dateDelay) && dateDelay > 0) return Math.min(15_000, dateDelay);
+  }
+  try {
+    const payload = JSON.parse(errorBody) as JsonRecord;
+    const details = array(record(payload['error'])['details']);
+    for (const detail of details) {
+      const delay = stringValue(record(detail)['retryDelay']);
+      const match = delay.match(/^(\\d+(?:\\.\\d+)?)s$/);
+      if (match) return Math.min(15_000, Math.max(0, Number(match[1]) * 1_000));
+    }
+  } catch {}
+  return Math.min(8_000, GEMINI_RETRY_BASE_MS * 2 ** (attempt - 1)) + Math.floor(Math.random() * 250);
+}
+function isRetryableGeminiError(status: number, errorBody: string) {
+  if (status === 503 || status === 502 || status === 504) return true;
+  if (status !== 429) return false;
+  // A daily quota exhaustion cannot be fixed by retrying within this request.
+  return !/(per[_ ]day|requests per day|daily quota|quota exceeded for quota metric.*per.?day)/i.test(errorBody);
+}
+async function fetchGeminiWithRetry(url: string, init: RequestInit) {
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
+    const response = await fetch(url, init);
+    if (response.ok || attempt === GEMINI_MAX_ATTEMPTS || !isRetryableGeminiError(response.status, await response.clone().text())) return response;
+    const body = await response.clone().text();
+    const delay = retryDelayMs(response, body, attempt);
+    console.warn('Retrying transient Gemini API failure', { status: response.status, attempt, maxAttempts: GEMINI_MAX_ATTEMPTS, delayMs: delay });
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new Error('Gemini retry loop ended unexpectedly');
+}
+
 const rejectedHosts = ['facebook.com','instagram.com','youtube.com','linkedin.com','x.com','twitter.com','pinterest.com','reddit.com','wikipedia.org','google.com','bing.com','duckduckgo.com','tiktok.com','amazon.com','ebay.com','etsy.com','similarweb.com','statista.com','crunchbase.com'];
 function rejectedHost(host: string) { return rejectedHosts.some((blocked) => host === blocked || host.endsWith(`.${blocked}`)); }
 function canonicalHomepage(url: string) {
@@ -194,14 +234,14 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    const response = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: generationConfig(model) }),
     });
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 500);
+      const detail = (await response.text()).slice(0, 1500);
       console.error('Gemini competitor discovery failed', { model, status: response.status, detail });
       return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'provider-error' };
     }
