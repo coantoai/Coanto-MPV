@@ -286,7 +286,6 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
     const result: GeminiDiscoveryResult = { snapshots, candidateCount: candidates.length, searchQueries: queries, status: snapshots.length ? 'ok' : 'empty' };
     console.info('Gemini competitor discovery', {
       model,
-      groundedStructuredOutput: supportsGroundedStructuredOutput(model),
       status: result.status,
       candidates: candidates.length,
       verifiedSnapshots: snapshots.length,
