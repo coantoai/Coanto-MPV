@@ -20,7 +20,6 @@ function publicAuthClient() {
 async function noteFailure(email: string, action: 'signin' | 'signup', request: Request) { try { await recordAuthFailure(email, action, request); } catch (error) { console.error('Auth throttle failure write failed', { action, error }); } }
 async function clearFailures(email: string, request: Request) { try { await clearSubjectAuthFailures(email, request); } catch (error) { console.error('Auth throttle cleanup failed', { error }); } }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/api/auth')({
   server: { handlers: {
     GET: async ({ request }) => {

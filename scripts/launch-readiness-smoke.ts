@@ -67,7 +67,7 @@ for (const key of ['COANTO_LAUNCH_MODE', 'COANTO_SITE_URL', 'COANTO_RELEASE_SHA'
 }
 
 const packageJson = await readFile(join(root, 'package.json'), 'utf8');
-expect(packageJson.includes('"packageManager":"bun@1.4.2"'), 'Launch toolchain must pin the Bun version.');
+expect(JSON.parse(packageJson).packageManager === 'bun@1.4.2', 'Launch toolchain must pin the Bun version.');
 
 const launchWorkflow = await readFile(join(root, '.github', 'workflows', 'launch-gate.yml'), 'utf8');
 for (const invariant of ['backup_confirmed', 'rollback_confirmed', 'rollback_sha', 'launch:check', 'launch:search-live', 'test:ai-live-e2e', '/api/ready', 'EXPECTED_SHA', 'git merge-base --is-ancestor', 'bun-version: 1.4.2']) {

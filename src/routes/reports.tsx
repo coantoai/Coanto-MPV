@@ -4,7 +4,6 @@ import { BarChart3, FileText, RefreshCw, ShieldCheck, Target, TrendingUp } from 
 import { generateExecutiveReport, listExecutiveReports, type ExecutiveReportItem } from '@/lib/alerts-reports.functions';
 import type { Json } from '@/lib/json';
 
-// @ts-expect-error TanStack route types are generated separately.
 export const Route = createFileRoute('/reports')({
   component: ReportsPage,
   head: () => ({ meta: [{ title: 'COANTO — التقارير التنفيذية' }, { name: 'description', content: 'تقارير تنافسية تنفيذية مبنية على الأدلة والقرارات المحفوظة.' }] }),

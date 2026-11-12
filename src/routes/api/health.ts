@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router';
 import { apiSecurityHeaders } from '@/lib/http-security.server';
 import { releaseIdentity } from '@/lib/release.server';
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/api/health')({
   server: {
     handlers: {

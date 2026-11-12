@@ -11,7 +11,6 @@ function json(request: Request, body: unknown, status = 200) {
   });
 }
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/api/business-context')({
   server: {
     handlers: {

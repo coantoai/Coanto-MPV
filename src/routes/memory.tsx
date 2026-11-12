@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Brain, Loader2, Plus, Trash2 } from "lucide-react";
 import { deleteMemory, listMemory, saveMemory, type MemoryItem, type MemoryKind } from "@/lib/memory.functions";
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route=createFileRoute("/memory")({component:MemoryPage});
 const kinds:Array<{value:MemoryKind;label:string}>=[{value:"decision",label:"قرار"},{value:"recommendation",label:"توصية"},{value:"insight",label:"رؤية"},{value:"preference",label:"تفضيل"},{value:"note",label:"ملاحظة"}];
 function formatDate(value:string){const date=new Date(value);return Number.isNaN(date.getTime())?"—":date.toLocaleString("ar");}

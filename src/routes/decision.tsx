@@ -4,7 +4,6 @@ import { ArrowUpLeft, CheckCircle2, Clock3, RefreshCw, ShieldCheck, Target, XCir
 import { getLatestDecision, listDecisions, refreshDecisionEngine, setDecisionStatus, type Decision } from '@/lib/decision.functions';
 import { saveMemory } from '@/lib/memory.functions';
 
-// @ts-expect-error TanStack file-route type map is generated without declarations in this project template.
 export const Route = createFileRoute('/decision')({ component: DecisionPage, head: () => ({ meta: [{ title: 'COANTO — القرار' }, { name: 'description', content: 'تحويل الذكاء التنافسي الموثق إلى قرار واضح وقابل للتنفيذ.' }] }) });
 const priorityClass: Record<string, string> = { critical: 'border-red-400/30 bg-red-400/10 text-red-200', high: 'border-orange-400/30 bg-orange-400/10 text-orange-200', medium: 'border-amber-400/30 bg-amber-400/10 text-amber-200', low: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' };
 const statusLabel:Record<string,string>={proposed:'مقترح',accepted:'مقبول',dismissed:'مرفوض',completed:'مكتمل'};

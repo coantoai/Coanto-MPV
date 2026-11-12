@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Check, ShieldCheck, Sparkles } from 'lucide-react';
 
-// @ts-expect-error TanStack route types are generated separately.
 export const Route=createFileRoute('/pricing')({component:PricingPage});
 
 const plans=[
