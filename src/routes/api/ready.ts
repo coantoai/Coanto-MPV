@@ -18,7 +18,10 @@ function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'databas
   const detail = error && typeof error === 'object'
     ? error as { message?: unknown; code?: unknown; statusCode?: unknown; status?: unknown; name?: unknown }
     : {};
-  const message = typeof detail.message === 'string' ? detail.message : '';
+  const messageObject = detail.message && typeof detail.message === 'object' ? detail.message as { message?: unknown; code?: unknown; status?: unknown; statusCode?: unknown; name?: unknown } : null;
+  const message = typeof detail.message === 'string' ? detail.message : messageObject && typeof messageObject.message === 'string' ? messageObject.message : '';
+  const messageFields = messageObject ? Object.keys(messageObject).slice(0, 16) : [];
+  const messageType = messageObject ? (typeof messageObject.name === 'string' ? messageObject.name : (messageObject as object).constructor?.name || 'OBJECT') : typeof detail.message;
   const code = typeof detail.code === 'string' && /^[A-Z0-9_]{2,24}$/.test(detail.code) ? detail.code : '';
   const status = typeof detail.statusCode === 'number' ? detail.statusCode : typeof detail.status === 'number' ? detail.status : null;
   let reason = 'BACKEND_REQUEST_FAILED';
@@ -63,6 +66,8 @@ function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'databas
     messageClass,
     errorType,
     errorFields,
+    messageType,
+    ...(messageObject ? { messageFields } : {}),
     ...(nested ? { nestedErrorType: typeof nested.name === 'string' ? nested.name : 'OBJECT', nestedMessageClass, ...(nestedCode ? { nestedBackendCode: nestedCode } : {}), ...(nestedStatus ? { nestedBackendStatus: nestedStatus } : {}) } : {}),
     bindings,
     ...(code ? { backendCode: code } : {}),
