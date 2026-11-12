@@ -91,6 +91,12 @@ jobs:
           echo "{\"name\":\"gemini_grounded_allbirds\",\"status\":\"$status\",\"exit_code\":$code}" > readiness/gemini-live-status.json
           exit "$code"
 
+      - name: Full live AI analysis E2E on Allbirds
+        id: ai_e2e
+        if: always()
+        shell: bash
+        run: bun run test:ai-live-e2e
+
       - name: InsForge isolated database integration smoke
         id: insforge_crud
         if: always()
