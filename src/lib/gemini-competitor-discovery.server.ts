@@ -65,7 +65,7 @@ function isRetryableGeminiError(status: number, errorBody: string) {
   if (status === 503 || status === 502 || status === 504) return true;
   if (status !== 429) return false;
   // A daily quota exhaustion cannot be fixed by retrying within this request.
-  return !/(per[_ ]day|requests per day|daily quota|quota exceeded for quota metric.*per.?day)/i.test(errorBody);
+  return !/(you exceeded your current quota|check your plan and billing|per[_ ]day|requests per day|daily quota|quota exceeded for quota metric.*per.?day)/i.test(errorBody);
 }
 async function fetchGeminiWithRetry(url: string, init: RequestInit) {
   for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt += 1) {
