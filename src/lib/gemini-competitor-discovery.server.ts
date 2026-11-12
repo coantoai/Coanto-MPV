@@ -224,6 +224,29 @@ function groundedSnapshot(candidate: GeminiCandidate, sources: GroundingSource[]
   };
 }
 
+async function discoverWithoutGoogleGrounding(main: SiteSnapshot, apiKey: string, model: string, prompt: string): Promise<GeminiDiscoveryResult> {
+  const response = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: generationConfig(model) }),
+  });
+  if (!response.ok) {
+    console.error('Gemini ungrounded fallback failed', { model, status: response.status, detail: (await response.text()).slice(0, 1200) });
+    return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'provider-error' };
+  }
+  const raw = record(await response.json());
+  const candidates = competitorCandidates(parseJson(responseText(raw)), hostname(main.url));
+  const settled = await Promise.all(candidates.map(async (candidate) => {
+    try { return await fetchSite(candidate.url); }
+    catch {
+      try { return await searchEvidenceForUrl(candidate.url); } catch { return null; }
+    }
+  }));
+  const snapshots = settled.filter((site): site is SiteSnapshot => Boolean(site));
+  console.info('Gemini ungrounded discovery fallback', { model, candidates: candidates.length, verifiedSnapshots: snapshots.length, googleSearchGrounding: false });
+  return { snapshots, candidateCount: candidates.length, searchQueries: 0, status: snapshots.length ? 'ok' : 'empty' };
+}
+
 export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise<GeminiDiscoveryResult> {
   const apiKey = process.env['GEMINI_API_KEY']?.trim();
   if (!apiKey) return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'missing-key' };
@@ -242,7 +265,10 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
     });
     if (!response.ok) {
       const detail = (await response.text()).slice(0, 1500);
-      console.error('Gemini competitor discovery failed', { model, status: response.status, detail });
+      console.error('Gemini Google Search grounding unavailable; switching to verified non-grounded discovery', { model, status: response.status, detail });
+      if (response.status === 429 || response.status === 503 || response.status === 502 || response.status === 504) {
+        return await discoverWithoutGoogleGrounding(main, apiKey, model, prompt);
+      }
       return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'provider-error' };
     }
     const raw = record(await response.json());
