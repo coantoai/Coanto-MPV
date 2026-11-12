@@ -98,3 +98,9 @@ AI providers interpret supplied evidence and may perform explicitly enabled rese
 5. Integrate AI live E2E once quota/billing is available, without blocking unrelated platform development.
 
 This document is the architecture source of truth. Changes that materially alter these boundaries must update this file in the same change.
+
+## Preview Agent API proof of concept
+
+The additive `/api/agent` boundary exposes an OpenAPI contract and scoped tools over existing domain services. It uses existing InsForge bearer validation plus an explicit server-configured agent-principal/scope allowlist; it never replaces browser authentication. The route is disabled in Production. InsForge `agent_tool_runs` holds tenant-owned artifacts, audit outcomes, atomic budgets and idempotency records. No alternate persistence backend is introduced.
+
+Agent research invokes Serper or Exa independently. Approved sources pass a bounded HTTPS transport, the existing evidence collector and verification/trust policies. Intelligence and decision drafts derive only from real persisted tenant monitoring events, not invented changes from search snippets. Drafts are stored as agent artifacts; existing UI decision acceptance/publishing remains unchanged. The optional Gemini client uses the same scoped API and never receives provider/database secrets. See `docs/AGENT-POC.md` for sandbox configuration, remaining external prerequisites and verification.

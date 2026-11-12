@@ -1,4 +1,5 @@
 import { fetchSite, hostname, type SiteSnapshot } from './analyze.server';
+import { searchAgentProvider } from './agent-search.server';
 
 type ExaResult = { url?: string; title?: string; text?: string; highlights?: string[] };
 export type ExaDiscovery = { status: 'ok' | 'missing-key' | 'provider-error' | 'empty'; snapshots: SiteSnapshot[]; candidateCount: number };
@@ -6,16 +7,10 @@ const excluded = ['linkedin.com','facebook.com','instagram.com','youtube.com','r
 export async function discoverCompetitorsWithExa(main: SiteSnapshot): Promise<ExaDiscovery> {
   const key = process.env['EXA_API_KEY']?.trim();
   if (!key) return {status:'missing-key',snapshots:[],candidateCount:0};
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(),12000);
   try {
-    const response = await fetch('https://api.exa.ai/search',{
-      method:'POST',signal:controller.signal,
-      headers:{'content-type':'application/json','x-api-key':key},
-      body:JSON.stringify({query:`Companies selling products or services directly competing with ${hostname(main.url)} ${main.title} ${main.description.slice(0,250)} official websites`,type:'auto',numResults:12,contents:{text:{maxCharacters:350}}})
-    });
-    if (!response.ok) { console.error('Exa search failed',response.status); return {status:'provider-error',snapshots:[],candidateCount:0}; }
-    const data = await response.json() as {results?:ExaResult[]};
+    const searched = await searchAgentProvider('exa',`Companies selling products or services directly competing with ${hostname(main.url)} ${main.title} ${main.description.slice(0,250)} official websites`,12);
+    if (!['ok','empty'].includes(searched.status)) return {status:'provider-error',snapshots:[],candidateCount:0};
+    const data: {results:ExaResult[]} = {results:searched.results.map(hit=>({url:hit.url,title:hit.title,text:hit.snippet}))};
     const own = hostname(main.url), seen = new Set<string>();
     const results = (data.results??[]).filter(item=>{
       if(!item.url || !/^https:\/\//.test(item.url))return false;
@@ -28,5 +23,4 @@ export async function discoverCompetitorsWithExa(main: SiteSnapshot): Promise<Ex
     }));
     return {status:results.length?'ok':'empty',candidateCount:results.length,snapshots:snapshots.filter((s):s is SiteSnapshot=>s!==null)};
   } catch(e) {console.error('Exa discovery unavailable',e);return {status:'provider-error',snapshots:[],candidateCount:0};}
-  finally {clearTimeout(timer);}
 }

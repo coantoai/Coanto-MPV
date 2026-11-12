@@ -59,7 +59,7 @@ function hasExplicitScheme(value: string) {
  * and never treats an AI-generated statement as evidence by itself. Direct HTTP
  * is attempted first by default; configured Apify acquisition is a bounded fallback.
  */
-export async function collectEvidence(request: EvidenceCollectionRequest): Promise<EvidenceCollectionResult> {
+export async function collectEvidence(request: EvidenceCollectionRequest, transport: { acquire?: typeof acquireSiteSnapshot; search?: typeof searchEvidenceForUrl } = {}): Promise<EvidenceCollectionResult> {
   const maxSources = Math.max(1, Math.min(request.maxSources ?? 12, 24));
   const records: EvidenceRecord[] = [];
   const rejected: Array<{ url: string; reason: string }> = [];
@@ -89,12 +89,12 @@ export async function collectEvidence(request: EvidenceCollectionRequest): Promi
   for (const sourceUrl of normalizedUrls) {
     const retrievedAt = new Date().toISOString();
     try {
-      const snapshot: AcquiredSiteSnapshot = await acquireSiteSnapshot(sourceUrl);
+      const snapshot: AcquiredSiteSnapshot = await (transport.acquire ?? acquireSiteSnapshot)(sourceUrl);
       records.push(createEvidence(inputFromSnapshot(snapshot, request, retrievedAt)));
       continue;
     } catch (directError) {
       try {
-        const fallback = await searchEvidenceForUrl(sourceUrl);
+        const fallback = await (transport.search ?? searchEvidenceForUrl)(sourceUrl);
         if (fallback) {
           records.push(createEvidence(inputFromSnapshot(fallback, request, retrievedAt)));
           continue;

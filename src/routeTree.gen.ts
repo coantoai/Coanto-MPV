@@ -25,6 +25,7 @@ import { Route as MonitoringRouteImport } from './routes/monitoring'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as ApiAgentRouteImport } from './routes/api/agent'
 import { Route as ApiAnalyzeRouteImport } from './routes/api/analyze'
 import { Route as ApiAuthRouteImport } from './routes/api/auth'
 import { Route as ApiBraveDiagnosticRouteImport } from './routes/api/brave-diagnostic'
@@ -115,6 +116,11 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAgentRoute = ApiAgentRouteImport.update({
+  id: '/api/agent',
+  path: '/api/agent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAnalyzeRoute = ApiAnalyzeRouteImport.update({
   id: '/api/analyze',
   path: '/api/analyze',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
   '/reports': typeof ReportsRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/analyze': typeof ApiAnalyzeRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/brave-diagnostic': typeof ApiBraveDiagnosticRoute
@@ -205,6 +212,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
   '/reports': typeof ReportsRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/analyze': typeof ApiAnalyzeRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/brave-diagnostic': typeof ApiBraveDiagnosticRoute
@@ -233,6 +241,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/pricing': typeof PricingRoute
   '/reports': typeof ReportsRoute
+  '/api/agent': typeof ApiAgentRoute
   '/api/analyze': typeof ApiAnalyzeRoute
   '/api/auth': typeof ApiAuthRoute
   '/api/brave-diagnostic': typeof ApiBraveDiagnosticRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pricing'
     | '/reports'
+    | '/api/agent'
     | '/api/analyze'
     | '/api/auth'
     | '/api/brave-diagnostic'
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pricing'
     | '/reports'
+    | '/api/agent'
     | '/api/analyze'
     | '/api/auth'
     | '/api/brave-diagnostic'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pricing'
     | '/reports'
+    | '/api/agent'
     | '/api/analyze'
     | '/api/auth'
     | '/api/brave-diagnostic'
@@ -344,6 +356,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   PricingRoute: typeof PricingRoute
   ReportsRoute: typeof ReportsRoute
+  ApiAgentRoute: typeof ApiAgentRoute
   ApiAnalyzeRoute: typeof ApiAnalyzeRoute
   ApiAuthRoute: typeof ApiAuthRoute
   ApiBraveDiagnosticRoute: typeof ApiBraveDiagnosticRoute
@@ -469,6 +482,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/agent': {
+      id: '/api/agent'
+      path: '/api/agent'
+      fullPath: '/api/agent'
+      preLoaderRoute: typeof ApiAgentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/analyze': {
       id: '/api/analyze'
       path: '/api/analyze'
@@ -552,6 +572,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   PricingRoute: PricingRoute,
   ReportsRoute: ReportsRoute,
+  ApiAgentRoute: ApiAgentRoute,
   ApiAnalyzeRoute: ApiAnalyzeRoute,
   ApiAuthRoute: ApiAuthRoute,
   ApiBraveDiagnosticRoute: ApiBraveDiagnosticRoute,
