@@ -172,3 +172,15 @@ test("cached artifact replay rechecks original scope after scope revocation", as
   expect(response.status).toBe(403);
   expect(await response.text()).not.toContain("private");
 });
+
+test("unrecognized runtime environments fail closed", async () => {
+  const { deps } = fixture();
+  deps.environment = "unknown";
+  expect(
+    (
+      await createAgentHandler(deps)(
+        req({ tool: "get_business_context", input: {} }),
+      )
+    ).status,
+  ).toBe(404);
+});

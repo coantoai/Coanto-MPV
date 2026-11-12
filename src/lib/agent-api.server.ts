@@ -129,7 +129,7 @@ export function createAgentHandler(deps: AgentDependencies) {
           ...(status === 429 ? { "retry-after": "60" } : {}),
         },
       });
-    if (!deps.enabled || deps.environment === "production")
+    if (!deps.enabled || !["preview", "development"].includes(deps.environment))
       return json({ error: "NOT_FOUND" }, 404);
     if (request.method !== "POST")
       return json({ error: "METHOD_NOT_ALLOWED" }, 405);

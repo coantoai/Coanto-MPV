@@ -7,9 +7,15 @@ import {
 } from "@/lib/agent-store.server";
 import { agentServices } from "@/lib/agent-services.server";
 import { agentOpenApi } from "@/lib/agent-openapi";
+function runtimeEnvironment() {
+  return (
+    process.env["VERCEL_ENV"] ??
+    (process.env["NODE_ENV"] === "production" ? "unknown" : "development")
+  );
+}
 function active() {
   return (
-    process.env["VERCEL_ENV"] !== "production" &&
+    ["preview", "development"].includes(runtimeEnvironment()) &&
     process.env["COANTO_AGENT_ENABLED"] !== "false"
   );
 }
@@ -27,7 +33,7 @@ export const Route = createFileRoute("/api/agent")({
           : new Response(null, { status: 404 }),
       POST: async ({ request }) =>
         createAgentHandler({
-          environment: process.env["VERCEL_ENV"] ?? "development",
+          environment: runtimeEnvironment(),
           enabled: active(),
           authenticate: authenticateAgent,
           reserve: reserveAgentOperation,
