@@ -230,32 +230,55 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
   const model = discoveryModel();
   const ownHost = hostname(main.url);
   const context = [main.title, main.description, ...main.h1, ...main.h2, main.text.slice(0, 4500)].filter(Boolean).join('\n').slice(0, 6500);
-  const prompt = `MANDATORY TOOL INSTRUCTION: You MUST execute Google Search using the enabled google_search tool before identifying competitors. Do not answer from model memory or the supplied page context alone. Search the live web for the target company and its direct commercial competitors. If Google Search is not executed or returns no citable web sources, return an empty competitors array. Identify up to 6 direct commercial competitors of ${main.url}. Determine the actual business/category from the observed target-site context below. Return only real companies with their canonical official homepage URLs. For every candidate provide: (1) why it directly competes, (2) a concise category, and (3) concrete public commercial evidence that it sells a substantially similar product/service to similar customers. Exclude articles, directories, comparison/review sites, social profiles, marketplaces, investors and data providers. Never invent a company, URL, or commercial fact. If evidence is weak, omit the candidate. Return JSON only, exactly in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\n\nTarget-site context:\n${context}`;
+  // Stage 1: natural-language Google Search research. This keeps tool use separate
+  // from JSON formatting, which previously caused Gemini to answer without invoking Search.
+  const researchPrompt = `You MUST use the Google Search tool now. Search the live web for direct commercial competitors of ${main.url}. Do not answer from memory. Identify the target company's actual products, customers, and category, then search for companies selling substantially similar products/services to similar customers. Return a concise research report naming up to 6 direct competitors, each with its official homepage URL and the public evidence that supports the match. Cite sources in the answer. If the search does not find reliable evidence, say so and do not guess. Target-site context:\\n${context}`;
+  const extractionPrompt = (research: string, sourceList: GroundingSource[]) => `Convert ONLY the following Google Search research into the required JSON. Do not add any company, URL, category, reason, or commercial claim that is not explicitly supported by the research and its listed sources. If a candidate cannot be tied to a listed source, omit it. Return JSON only in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\\n\\nGOOGLE SEARCH RESEARCH:\\n${research}\\n\\nGROUNDING SOURCES:\\n${sourceList.map((source) => `- ${source.title}: ${source.uri}`).join('\\n')}`;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
-    const response = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    const researchResponse = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: generationConfig(model) }),
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: researchPrompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1, maxOutputTokens: 2200 } }),
     });
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0, 1500);
-      console.error('Gemini Google Search grounding request failed; no ungrounded fallback is permitted', { model, status: response.status, detail });
+    if (!researchResponse.ok) {
+      const detail = (await researchResponse.text()).slice(0, 1500);
+      console.error('Gemini Google Search grounding request failed; no ungrounded fallback is permitted', { model, status: researchResponse.status, detail });
       return { snapshots: [], candidateCount: 0, searchQueries: 0, status: 'provider-error' };
     }
-    const raw = record(await response.json());
-    const text = responseText(raw);
-    const candidates = competitorCandidates(parseJson(text), ownHost);
-    const queries = searchCount(raw);
-    const grounding = groundingData(raw);
+    const researchRaw = record(await researchResponse.json());
+    const researchText = responseText(researchRaw);
+    const queries = searchCount(researchRaw);
+    const grounding = groundingData(researchRaw);
     if (queries < 1 || grounding.sources.length < 1) {
       console.error('Gemini did not execute Google Search Grounding or return source URLs; rejecting ungrounded discovery', { model, searchQueries: queries, groundingSources: grounding.sources.length });
-      return { snapshots: [], candidateCount: candidates.length, searchQueries: queries, status: 'provider-error' as const };
+      return { snapshots: [], candidateCount: 0, searchQueries: queries, status: 'provider-error' };
     }
+
+    // Stage 2: structure only the already-grounded research. This request cannot
+    // introduce new research facts because every output field is checked against Stage 1.
+    const extractionResponse = await fetchGeminiWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: extractionPrompt(researchText, grounding.sources) }] }],
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1800, responseMimeType: 'application/json' },
+      }),
+    });
+    if (!extractionResponse.ok) {
+      const detail = (await extractionResponse.text()).slice(0, 1500);
+      console.error('Gemini grounded-research structuring failed', { model, status: extractionResponse.status, detail });
+      return { snapshots: [], candidateCount: 0, searchQueries: queries, status: 'provider-error' };
+    }
+    const structuredRaw = record(await extractionResponse.json());
+    const structuredText = responseText(structuredRaw);
+    const candidates = competitorCandidates(parseJson(structuredText), ownHost);
     const settled = await Promise.all(candidates.map(async (candidate) => {
-      const candidateSources = candidateGroundingSources(candidate, text, grounding);
+      const candidateSources = candidateGroundingSources(candidate, researchText, grounding);
       if (!candidateSources.length) {
         console.warn('Rejecting competitor candidate without candidate-linked Google grounding sources', { candidate: candidate.name, url: candidate.url });
         return null;
@@ -280,7 +303,7 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
       searchQueries: queries,
       groundingSources: grounding.sources.length,
       groundedFallbacks: snapshots.filter((site) => site.sourceType === 'search-index' && site.evidence.some((item) => item.startsWith('Gemini Google Search grounded competitor candidate:'))).length,
-      outputChars: text.length,
+      outputChars: researchText.length + structuredText.length,
     });
     return result;
   } catch (error) {
