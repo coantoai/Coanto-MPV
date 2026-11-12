@@ -230,7 +230,7 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
   const model = discoveryModel();
   const ownHost = hostname(main.url);
   const context = [main.title, main.description, ...main.h1, ...main.h2, main.text.slice(0, 4500)].filter(Boolean).join('\n').slice(0, 6500);
-  const prompt = `Use at most 1 highly focused Google Search query to identify up to 6 direct commercial competitors of ${main.url}. Determine the actual business/category from the observed target-site context below. Return only real companies with their canonical official homepage URLs. For every candidate provide: (1) why it directly competes, (2) a concise category, and (3) concrete public commercial evidence that it sells a substantially similar product/service to similar customers. Exclude articles, directories, comparison/review sites, social profiles, marketplaces, investors and data providers. Never invent a company, URL, or commercial fact. If evidence is weak, omit the candidate. Return JSON only, exactly in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\n\nTarget-site context:\n${context}`;
+  const prompt = `MANDATORY TOOL INSTRUCTION: You MUST execute Google Search using the enabled google_search tool before identifying competitors. Do not answer from model memory or the supplied page context alone. Search the live web for the target company and its direct commercial competitors. If Google Search is not executed or returns no citable web sources, return an empty competitors array. Identify up to 6 direct commercial competitors of ${main.url}. Determine the actual business/category from the observed target-site context below. Return only real companies with their canonical official homepage URLs. For every candidate provide: (1) why it directly competes, (2) a concise category, and (3) concrete public commercial evidence that it sells a substantially similar product/service to similar customers. Exclude articles, directories, comparison/review sites, social profiles, marketplaces, investors and data providers. Never invent a company, URL, or commercial fact. If evidence is weak, omit the candidate. Return JSON only, exactly in this shape: {"competitors":[{"name":"Company","url":"https://official.example/","reason":"...","category":"...","commercialEvidence":"..."}]}.\n\nTarget-site context:\n${context}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 45_000);
   try {
@@ -250,8 +250,16 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
     const candidates = competitorCandidates(parseJson(text), ownHost);
     const queries = searchCount(raw);
     const grounding = groundingData(raw);
+    if (queries < 1 || grounding.sources.length < 1) {
+      console.error('Gemini did not execute Google Search Grounding or return source URLs; rejecting ungrounded discovery', { model, searchQueries: queries, groundingSources: grounding.sources.length });
+      return { snapshots: [], candidateCount: candidates.length, searchQueries: queries, status: 'provider-error' as const };
+    }
     const settled = await Promise.all(candidates.map(async (candidate) => {
       const candidateSources = candidateGroundingSources(candidate, text, grounding);
+      if (!candidateSources.length) {
+        console.warn('Rejecting competitor candidate without candidate-linked Google grounding sources', { candidate: candidate.name, url: candidate.url });
+        return null;
+      }
       try { return augmentSnapshot(await fetchSite(candidate.url), candidate, candidateSources); }
       catch {
         try {
@@ -262,7 +270,7 @@ export async function discoverCompetitorsWithGemini(main: SiteSnapshot): Promise
       }
     }));
     const snapshots = settled.filter((item): item is SiteSnapshot => Boolean(item));
-    const result: GeminiDiscoveryResult = { snapshots, candidateCount: candidates.length, searchQueries: queries, status: candidates.length ? 'ok' : 'empty' };
+    const result: GeminiDiscoveryResult = { snapshots, candidateCount: candidates.length, searchQueries: queries, status: snapshots.length ? 'ok' : 'empty' };
     console.info('Gemini competitor discovery', {
       model,
       groundedStructuredOutput: supportsGroundedStructuredOutput(model),
