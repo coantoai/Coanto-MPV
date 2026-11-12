@@ -103,8 +103,7 @@ try{
 
   geminiMode='ungrounded-direct';
   const ungroundedDirect=await discoverCompetitorsWithGemini(main);
-  if(ungroundedDirect.snapshots.length!==1||ungroundedDirect.snapshots[0]?.sourceType!=='direct-site')throw new Error('Direct verification should still return a site when Gemini grounding metadata is absent.');
-  if(ungroundedDirect.snapshots[0]?.evidence.some((entry)=>entry.startsWith('Gemini Google Search grounded competitor candidate:')))throw new Error('Ungrounded Gemini prose leaked into verified evidence fields.');
+  if(ungroundedDirect.status!=='provider-error'||ungroundedDirect.snapshots.length!==0||ungroundedDirect.searchQueries!==0)throw new Error('Ungrounded Gemini discovery must fail closed without returning competitor snapshots.');
 }finally{
   globalThis.fetch=originalFetch;
   if(originalKey===undefined)delete process.env.GEMINI_API_KEY;else process.env.GEMINI_API_KEY=originalKey;
