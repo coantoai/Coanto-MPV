@@ -5,7 +5,8 @@ type Row = { provider: Provider; model: string; caseId: string; competitors: any
 
 const keys: Record<Provider, string> = { openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 const models: Record<Provider, string> = { openai: process.env.OPENAI_MODEL || 'gpt-5.6-luna', gemini: 'gemini-3.1-flash-lite', openrouter: process.env.OPENROUTER_MODEL || 'openrouter/auto', anthropic: process.env.ANTHROPIC_MODEL || 'claude-fable-5' };
-const providers: Provider[] = ['openai', 'gemini', 'openrouter', 'anthropic'];
+const requestedProviders = (process.env.AI_BENCHMARK_PROVIDERS || 'openai,gemini,openrouter,anthropic').split(',').map((value) => value.trim()).filter(Boolean) as Provider[];
+const providers: Provider[] = requestedProviders.filter((provider, index) => ['openai', 'gemini', 'openrouter', 'anthropic'].includes(provider) && requestedProviders.indexOf(provider) === index);
 const cases = BENCHMARK_CASES.slice(0, 6);
 const rows: Row[] = [];
 
