@@ -159,3 +159,16 @@ test("rejects oversized input, unexpected tools, invalid identifiers and cost es
   r.headers.set("idempotency-key", "invalid");
   expect((await handler(r)).status).toBe(400);
 });
+
+test("cached artifact replay rechecks original scope after scope revocation", async () => {
+  const { deps } = fixture(["artifacts:read"]);
+  deps.reserve = async () => ({
+    kind: "cached",
+    result: { tool: "list_decisions", result_json: [{ action: "private" }] },
+  });
+  const response = await createAgentHandler(deps)(
+    req({ tool: "get_artifact", input: { requestId: id } }),
+  );
+  expect(response.status).toBe(403);
+  expect(await response.text()).not.toContain("private");
+});

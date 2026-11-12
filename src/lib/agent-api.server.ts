@@ -204,8 +204,24 @@ export function createAgentHandler(deps: AgentDependencies) {
         },
         409,
       );
-    if (admission.kind === "cached")
+    if (admission.kind === "cached") {
+      // Cached artifact reads must not retain privileges removed since the original call.
+      if (tool === "get_artifact") {
+        const source =
+          admission.result && typeof admission.result === "object"
+            ? (admission.result as { tool?: unknown }).tool
+            : null;
+        if (
+          typeof source !== "string" ||
+          source === "get_artifact" ||
+          !Object.hasOwn(toolPolicies, source) ||
+          !principal.scopes.includes(toolPolicies[source as AgentTool].scope)
+        ) {
+          return json({ error: "INSUFFICIENT_SCOPE" }, 403);
+        }
+      }
       return json({ requestId, tool, cached: true, data: admission.result });
+    }
     let result: unknown;
     try {
       result = await deps.execute(tool, input, principal);
