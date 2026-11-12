@@ -43,11 +43,27 @@ function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'databas
   const errorType = error && typeof error === 'object'
     ? (typeof detail.name === 'string' ? detail.name : (error as object).constructor?.name || 'OBJECT')
     : typeof error;
+  const errorFields = error && typeof error === 'object' ? Object.keys(error).slice(0, 20) : [];
+  const nested = detail.error && typeof detail.error === 'object'
+    ? detail.error as { message?: unknown; code?: unknown; status?: unknown; statusCode?: unknown; name?: unknown }
+    : detail.cause && typeof detail.cause === 'object'
+      ? detail.cause as { message?: unknown; code?: unknown; status?: unknown; statusCode?: unknown; name?: unknown }
+      : null;
+  const nestedMessage = nested && typeof nested.message === 'string' ? nested.message : '';
+  const nestedCode = nested && typeof nested.code === 'string' && /^[A-Z0-9_]{2,24}$/.test(nested.code) ? nested.code : '';
+  const nestedStatus = nested && typeof nested.status === 'number' ? nested.status : nested && typeof nested.statusCode === 'number' ? nested.statusCode : null;
+  const nestedMessageClass = /permission denied|not authorized|insufficient privilege|row-level security|row level security/i.test(nestedMessage) ? 'PERMISSION_OR_RLS'
+    : /relation .* does not exist|table .* not found|schema cache|could not find the table/i.test(nestedMessage) ? 'TABLE_OR_SCHEMA_NOT_FOUND'
+    : /invalid.*(key|token|jwt)|unauthorized|authentication/i.test(nestedMessage) ? 'AUTHENTICATION'
+    : /fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|timeout/i.test(nestedMessage) ? 'NETWORK'
+    : nestedMessage ? 'OTHER_BACKEND_ERROR' : 'UNAVAILABLE';
   return {
     stage,
     reason,
     messageClass,
     errorType,
+    errorFields,
+    ...(nested ? { nestedErrorType: typeof nested.name === 'string' ? nested.name : 'OBJECT', nestedMessageClass, ...(nestedCode ? { nestedBackendCode: nestedCode } : {}), ...(nestedStatus ? { nestedBackendStatus: nestedStatus } : {}) } : {}),
     bindings,
     ...(code ? { backendCode: code } : {}),
     ...(status && [400,401,403,404,409,429,500,502,503,504].includes(status) ? { backendStatus: status } : {}),
