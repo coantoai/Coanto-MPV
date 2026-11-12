@@ -19,7 +19,7 @@ function AuthPage() {
     const body = await response.json() as { completed?: boolean };
     return nav({ to: body.completed ? '/' : '/onboarding' });
   }
-  useEffect(() => { void clientAuth.getSession().then((session) => { if (session) void continueAfterAuth(); }).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nav]);
+  useEffect(() => { void fetch('/api/auth', { credentials: 'same-origin', cache: 'no-store' }).then((response) => response.json()).then((status: { preview?: boolean; authenticated?: boolean }) => { if (status.preview) { void nav({ to: '/demo' }); return; } if (status.authenticated) void continueAfterAuth(); }).catch(() => undefined); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [nav]);
 
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError("");

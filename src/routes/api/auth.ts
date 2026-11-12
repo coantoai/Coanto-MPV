@@ -23,6 +23,9 @@ async function clearFailures(email: string, request: Request) { try { await clea
 export const Route = createFileRoute('/api/auth')({
   server: { handlers: {
     GET: async ({ request }) => {
+      // Preview deployments may show the public, synthetic demo without an account.
+      // Production authentication remains unchanged.
+      if (process.env['VERCEL_ENV'] === 'preview') return json(request, { authenticated: false, preview: true });
       const principal = await authenticateRequest(request);
       return principal ? json(request, { authenticated: true, userId: principal.userId }) : json(request, { authenticated: false }, 401);
     },
