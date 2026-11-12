@@ -10,26 +10,48 @@ function json(request: Request, body: unknown, status = 200) {
   });
 }
 
-// Only enum diagnostics and binding presence are returned, never URLs, values or raw errors.
+// Preview diagnostics expose only allow-listed classifications and metadata,
+// never credentials, backend URLs, raw messages, details, or hints.
 function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'database') {
   const names = ['INSFORGE_URL','INSFORGE_API_KEY','INSFORGE_ANON_KEY','GEMINI_API_KEY','SERPER_API_KEY','EXA_API_KEY','GEMINI_MODEL','COANTO_AGENT_PRINCIPALS','INSFORGE_BASE_URL','VITE_INSFORGE_BASE_URL','VITE_INSFORGE_ANON_KEY'] as const;
   const bindings = Object.fromEntries(names.map(name => [name, Boolean(process.env[name]?.trim())]));
-  const detail = error && typeof error === 'object' ? error as { message?: unknown; code?: unknown; statusCode?: unknown; status?: unknown } : {};
+  const detail = error && typeof error === 'object'
+    ? error as { message?: unknown; code?: unknown; statusCode?: unknown; status?: unknown; name?: unknown }
+    : {};
   const message = typeof detail.message === 'string' ? detail.message : '';
-  const code = typeof detail.code === 'string' ? detail.code : '';
+  const code = typeof detail.code === 'string' && /^[A-Z0-9_]{2,24}$/.test(detail.code) ? detail.code : '';
   const status = typeof detail.statusCode === 'number' ? detail.statusCode : typeof detail.status === 'number' ? detail.status : null;
   let reason = 'BACKEND_REQUEST_FAILED';
+  let messageClass = 'UNCLASSIFIED';
   if (!bindings['INSFORGE_URL'] || !bindings['INSFORGE_API_KEY']) reason = 'MISSING_BACKEND_BINDING';
   else if (message.includes('INSFORGE_URL must be a valid URL')) reason = 'INVALID_BACKEND_URL';
   else if (message.includes('INSFORGE_URL must')) reason = 'INSECURE_OR_UNSUPPORTED_BACKEND_URL';
   else if (message.includes('INSFORGE_API_KEY must')) reason = 'INVALID_PROJECT_KEY_FORMAT';
   else if (message.includes('AI_PROVIDER must')) reason = 'INVALID_AI_PROVIDER_CONFIGURATION';
   else if (message.includes('CRON_SECRET must')) reason = 'INVALID_CRON_SECRET_CONFIGURATION';
-  else if (status === 401 || code === '28P01') reason = 'BACKEND_AUTHENTICATION_REJECTED';
+  else if (status === 401 || code === '28P01' || code === 'PGRST301') reason = 'BACKEND_AUTHENTICATION_REJECTED';
   else if (status === 403 || code === '42501') reason = 'BACKEND_PERMISSION_DENIED';
   else if (code === '42P01' || code === 'PGRST205' || /relation .* does not exist|table .* not found|schema cache/i.test(message)) reason = 'BACKEND_SCHEMA_UNAVAILABLE';
   else if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|timeout/i.test(message)) reason = 'BACKEND_CONNECTION_FAILED';
-  return { stage, reason, bindings, ...(status && [400,401,403,404,409,429,500,502,503,504].includes(status) ? { backendStatus: status } : {}), ...(['42P01','PGRST205','42501','28P01'].includes(code) ? { backendCode: code } : {}) };
+  else if (code === 'PGRST116') reason = 'BACKEND_QUERY_RETURNED_NO_MATCH';
+  if (/relation .* does not exist|table .* not found|schema cache|could not find the table/i.test(message)) messageClass = 'TABLE_OR_SCHEMA_NOT_FOUND';
+  else if (/permission denied|not authorized|insufficient privilege|row-level security|row level security/i.test(message)) messageClass = 'PERMISSION_OR_RLS';
+  else if (/invalid.*(key|token|jwt)|unauthorized|authentication/i.test(message)) messageClass = 'AUTHENTICATION';
+  else if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network|timeout/i.test(message)) messageClass = 'NETWORK';
+  else if (/does not exist|not found/i.test(message)) messageClass = 'RESOURCE_NOT_FOUND';
+  else if (message) messageClass = 'OTHER_BACKEND_ERROR';
+  const errorType = error && typeof error === 'object'
+    ? (typeof detail.name === 'string' ? detail.name : (error as object).constructor?.name || 'OBJECT')
+    : typeof error;
+  return {
+    stage,
+    reason,
+    messageClass,
+    errorType,
+    bindings,
+    ...(code ? { backendCode: code } : {}),
+    ...(status && [400,401,403,404,409,429,500,502,503,504].includes(status) ? { backendStatus: status } : {}),
+  };
 }
 
 export const Route = createFileRoute('/api/ready')({
