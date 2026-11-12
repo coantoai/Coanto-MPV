@@ -179,16 +179,6 @@ function candidateGroundingSources(candidate: GeminiCandidate, outputText: strin
   return [...unique.values()].slice(0, 4);
 }
 function discoveryModel() { return process.env['GEMINI_DISCOVERY_MODEL']?.trim() || 'gemini-3.1-flash-lite'; }
-const schema = { type: 'OBJECT', properties: { competitors: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, url: { type: 'STRING' }, reason: { type: 'STRING' }, category: { type: 'STRING' }, commercialEvidence: { type: 'STRING' } }, required: ['name','url','reason','category','commercialEvidence'] } } }, required: ['competitors'] };
-// Google documents combined Google Search + structured output on selected Gemini 3 models.
-// Flash-Lite uses JSON-only prompting here so discovery does not rely on an undocumented tool/schema combination.
-function supportsGroundedStructuredOutput(model: string) { return model === 'gemini-3.8-flash' || model === 'gemini-3.1-pro-preview'; }
-function generationConfig(model: string) {
-  const base: JsonRecord = { temperature: 0.1, maxOutputTokens: 1800 };
-  if (supportsGroundedStructuredOutput(model)) { base['responseMimeType'] = 'application/json'; base['responseSchema'] = schema; }
-  return base;
-}
-
 function groundedEvidence(candidate: GeminiCandidate, sources: GroundingSource[]) {
   if (!sources.length) return [];
   return [
