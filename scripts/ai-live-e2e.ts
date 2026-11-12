@@ -1,4 +1,4 @@
-import { discoverCompetitors, fetchSite } from '../src/lib/analyze.server';
+import { fetchSite } from '../src/lib/analyze.server';
 import { discoverCompetitorsWithGemini } from '../src/lib/gemini-competitor-discovery.server';
 import { filterCommercialCompetitors } from '../src/lib/competitor-filter.server';
 import { runAiProvider, type AiProvider } from '../src/lib/ai-engine.server';
@@ -14,9 +14,9 @@ function parseJsonObject(text:string):unknown{const cleaned=text.replace(/^\s*``
 async function main(){
   const main=await fetchSite(target);
   const grounded=await discoverCompetitorsWithGemini(main);
-  let discovered=filterCommercialCompetitors(main,grounded.snapshots);
-  if(!discovered.length){const legacy=await discoverCompetitors(main);discovered=filterCommercialCompetitors(main,[...grounded.snapshots,...legacy]);}
-  if(!discovered.length)throw new Error(`E2E discovery returned no verified competitors (gemini=${grounded.status}, candidates=${grounded.candidateCount}, snapshots=${grounded.snapshots.length}).`);
+  if(grounded.status!=='ok'||grounded.searchQueries<1||!grounded.snapshots.length)throw new Error(`Mandatory Google Search Grounding failed closed (status=${grounded.status}, queries=${grounded.searchQueries}, candidates=${grounded.candidateCount}, groundedSnapshots=${grounded.snapshots.length}).`);
+  const discovered=filterCommercialCompetitors(main,grounded.snapshots);
+  if(!discovered.length)throw new Error(`Grounded discovery returned no verified commercial competitors (candidates=${grounded.candidateCount}, groundedSnapshots=${grounded.snapshots.length}).`);
 
   const evidence=[`Target: ${main.url}`,`Title: ${main.title}`,`Description: ${main.description}`,`Observed evidence: ${main.evidence.join(' | ')}`,`Verified competitors: ${compact(discovered.slice(0,8),9000)}`].join('\n');
   const prompt=['You are COANTO running a real end-to-end competitive intelligence test.','Use ONLY the supplied evidence plus your web research. Return JSON only.','Every material competitor claim must have evidence and sourceUrls when available.','Do not invent revenue, market share, prices, percentages, dates, or financial impact.','Distinguish facts, inference, recommendation, and unknowns.','Return at least one valid competitor and include these fields: name, url, why, evidence, sourceUrls.','Also return: signals, priority_matrix, threats, opportunities, scenarios, action_plan, trust, unknowns, summary, next_action, threat_level, opportunity_level.','',evidence].join('\n');
