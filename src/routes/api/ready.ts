@@ -23,13 +23,13 @@ function safePreviewDiagnostic(error: unknown, stage: 'configuration' | 'databas
   const messageFields = messageObject ? Object.keys(messageObject).slice(0, 16) : [];
   const messageType = messageObject ? (typeof messageObject.name === 'string' ? messageObject.name : (messageObject as object).constructor?.name || 'OBJECT') : typeof detail.message;
   const safeMessage = message
-    .replace(/https?:\\/\\/[^\\s]+/gi, '<url>')
-    .replace(/Bearer\\s+[^\\s]+/gi, 'Bearer <redacted>')
-    .replace(/\\b(?:ik|sk|pk)_[A-Za-z0-9_-]+\\b/g, '<redacted>')
-    .replace(/\\beyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\b/g, '<token>')
-    .replace(/\\b[0-9a-f]{8}-[0-9a-f-]{27,}\\b/gi, '<id>')
-    .replace(/\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b/g, '<ip>')
-    .replace(/[?&][^\\s]+/g, '?<redacted>')
+    .replace(/https?:\/\/[^\s]+/gi, '<url>')
+    .replace(/Bearer\s+[^\s]+/gi, 'Bearer <redacted>')
+    .replace(/\b(?:ik|sk|pk)_[A-Za-z0-9_-]+\b/g, '<redacted>')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '<token>')
+    .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/gi, '<id>')
+    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '<ip>')
+    .replace(/[?&][^\s]+/g, '?<redacted>')
     .slice(0, 180);
   const code = typeof detail.code === 'string' && /^[A-Z0-9_]{2,24}$/.test(detail.code) ? detail.code : '';
   const status = typeof detail.statusCode === 'number' ? detail.statusCode : typeof detail.status === 'number' ? detail.status : null;
