@@ -20,6 +20,9 @@ export default function DashboardHome(){
   const [error,setError]=useState('');
 
   async function load(){
+    const previewResponse=await fetch('/api/auth',{credentials:'same-origin',cache:'no-store'});
+    const previewStatus=await previewResponse.json() as {preview?:boolean};
+    if(previewStatus.preview){await nav({to:'/demo'});return;}
     const session=await clientAuth.getSession();
     if(!session){await nav({to:'/auth'});return;}
     const data=await getDashboardSnapshot({});
