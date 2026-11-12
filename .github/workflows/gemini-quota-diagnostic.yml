@@ -50,7 +50,7 @@ jobs:
                 domain:d.domain ?? d.metadata?.domain ?? null,
                 quotaMetric:d.metadata?.quotaMetric ?? d.quotaMetric ?? null,
                 quotaId:d.metadata?.quotaId ?? d.quotaId ?? null,
-                quotaValue:d.metadata?.quotaValue ?? d.quotaValue ?? null,
+                quotaValue:d.metadata?.quotaValue ?? d.quotaValue ?? null,\n                quotaDimensions:d.metadata?.quotaDimensions ?? null,\n                quotaMetric:d.metadata?.quotaMetric ?? null,
                 consumer:d.metadata?.consumer ?? null,
                 retryDelay:d.retryDelay ?? null
               })):[];
