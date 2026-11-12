@@ -120,7 +120,7 @@ export function assessTrust(
   const threshold = options.minimumRecommendationScore ?? 70;
 
   let proofLevel: ProofLevel;
-  if (contradicting.length && contradictionPenalty >= 0.34) proofLevel = 'UNCERTAIN';
+  if (contradicting.length && contradictionPenalty >= 0.33) proofLevel = 'UNCERTAIN';
   else if (score >= 90 && independentSources >= 2 && directEvidence >= 1) proofLevel = 'PROVEN';
   else if (score >= 75 && independentSources >= 2) proofLevel = 'HIGH_CONFIDENCE';
   else if (score >= 55 && supporting.length >= 1) proofLevel = 'PROBABLE';
