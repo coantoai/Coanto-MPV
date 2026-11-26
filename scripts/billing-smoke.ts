@@ -28,7 +28,9 @@ if (!service.includes('trial_ends_at: expiresAt')) throw new Error('New trials m
 if (service.includes('STRIPE_SECRET') || service.includes('PAYPAL_SECRET')) throw new Error('Billing core must remain provider-neutral.');
 
 const pricing = await readFile(new URL('../src/routes/pricing.tsx', import.meta.url), 'utf8');
-if (!pricing.includes('السعر عند الإطلاق')) throw new Error('Pricing page must not fabricate paid pricing.');
+if (!pricing.includes('$99') || !pricing.includes('قبل أي التزام')) throw new Error('Pilot pricing and before-payment transparency must be explicit.');
+if (!pricing.includes('mailto:coantoai@gmail.com')) throw new Error('Manual pilot contact path missing.');
+if (!pricing.includes('لا يُحصّل أي مبلغ عبر هذه الصفحة')) throw new Error('Pilot cannot imply an active checkout.');
 if (!pricing.includes('/auth')) throw new Error('Pricing page must offer validation-stage onboarding.');
 const billingRoute = await readFile(new URL('../src/routes/billing.tsx', import.meta.url), 'utf8');
 if (!billingRoute.includes('clientAuth.getSession') || !billingRoute.includes("to:'/auth'")) throw new Error('Billing route must redirect unauthenticated users.');
