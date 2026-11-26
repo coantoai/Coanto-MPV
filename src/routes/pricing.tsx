@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import {
   ArrowLeft, ArrowUpLeft, BadgeCheck, Check, CheckCircle2, CircleHelp,
   ExternalLink, Eye, FileText, Fingerprint, Globe2, Mail, ShieldCheck,
-  Sparkles, Target, TrendingUp, Zap,
+  Sparkles, Target, Zap,
 } from 'lucide-react';
 
 export const Route = createFileRoute('/pricing')({
